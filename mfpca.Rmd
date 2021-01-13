@@ -1,0 +1,332 @@
+---
+title: "The modified mpca.sc function in refund"
+author: "Ruonan Li"
+header-includes: 
+  - \usepackage{bm}
+  - \usepackage{amsfonts}
+  - \usepackage{amsthm}
+  - \usepackage{amsmath}
+  - \usepackage{amssymb}
+  - \usepackage{mathrsfs}
+  - \usepackage{array}
+  - \usepackage{times}
+  - \usepackage{dsfont}
+  - \usepackage{caption}
+  - \usepackage{multirow}
+output: pdf_document
+---
+
+# Introduction
+The report is organized as following. We first discussthe part of the `mfpca.sc` function which costs long computation time in Section 1. We describe details of how to speed up the `mfpca.sc` function in Section 2. Section 3 guarantees the numerical accuracy of the updated function by simulation. In Section 4, we introduce a new parameter `weight` to select the way of computing smaple convariance. 
+
+
+# 1 The part of the `mfpca.sc` function which makes it cost long computation time.
+I checked the `mfpca.sc` function in the R package `refund`. There are two parts that cost much time. 
+We assume that the subject $i$ have $n_i$ visits and $T_{ij}$ observations per curve, so we observe $M_i=\sum_{j=1}^{n_i}T_{ij}$ points for subject $i$. Denote $D$ by the full number of grid points in a curve. Thus, the irregular $T_{ij}$ points are sampled from $D$ points. 
+
+**Part 1:** The part to smooth sample covariances.
+
+The `mfpca.sc` function applies the `gam` function to smooth sample covariances. We need to smooth two sample covariances. One is the total covariance and the other is the within covariance. A great choice is to use the sandwich smoother in Xiao et al. (2013) to smooth the sample covariance. Since the covariance matrix is symmetric, we only need to select one tuning parameter $\lambda$. It contributes to speed up. The implementation of the sandwich smoother is in the `fbps.cov` function. 
+
+**Part 2:** The part to get principal scores by $\begin{pmatrix}\mathbf{A}_i\\\mathbf{B}_i\end{pmatrix}\boldsymbol{\Sigma_i}^{-1}(\mathbf{Y}_i-\boldsymbol{\mu}-\boldsymbol{\eta}_j)$. 
+
+$\boldsymbol{\Sigma_i}=\text{cov}(\mathbf{Y}_i)$ is a $M_i\times M_i$ matrix. If the number of observed points for subjec $i$, i.e. $M_i=\sum_{j=1}^{n_i}T_{ij}$, is large, it takes long time to get the inverse of $\boldsymbol{\Sigma_i}$. Moreover, it may fail to get the inverse sometimes. Note that the `mfpca.sc` function does not separate regularly sampled functional data and irregularly sampled functional data. We need to compute $\boldsymbol{\Sigma_i}^{-1}$ for each $i$. It requires $O(\sum_{i=1}^nM_i^3)$ flops to obation principal scores. I tried $D=1000$ regularly sampled functional data. It took more than 10 minutes to compute one $\boldsymbol{\Sigma_i}^{-1}$ and we failed to get inverse for some $i$. Therefore, the `mfpca.sc` function does not work for data with $D=1000$. 
+
+
+# 2 The way to speed up the `mfpca.sc` function.
+I speed up the `mfpca.sc` function by optimizing the above two parts. The other parts of `mfpca.sc` are remained. I call the new function as `mfpca.sc2`. It also allows for different number of visits per subject. The `mfpca.sc2` function seperates regularly sampled functoinal data and irregularly sampled functional data. Thus, I add a new input parameter `design`, default as `irregular`. 
+
+**Part 1:** The way of smoothing sample covariances.
+
+For regularly spaced functional data, we apply the sandwich smoother to smooth sample covariances. For irregularly spaced fucntional data, we still apply the `gam` function as what the `mfpca.sc` function does. 
+
+
+**Part 2:** The estimate of principal scores. 
+
+Once the fixed functional effects ${\mu}(t)$, $\eta_j(t)$, the eigenvalues $\lambda_k^{(1)}$, $\lambda_l^{(2)}$ and the eigenfunctions $\phi_k(t)$, $\psi_l(t)$ are estimated, the MFPCA model can be re-writen as a linear mixed effects model 
+$$
+\begin{split}
+\tilde{Y}_{ij}(t_{ijs}) = \sum_{k=1}^{N_1}\xi_{ik}\phi_k(t_{ijs}) + \sum_{l=1}^{N_2}\zeta_{ijl}\psi_l(t_{ijs}) + \epsilon_{ijs} \;,\\
+\xi_{ik} \sim N\{0,\lambda_k^{(1)}\}, \zeta_{ijl} \sim N\{0,\lambda_l^{(2)}\}, \epsilon_{ijs} \sim N(0, \sigma^2) \;.
+\end{split}
+$$
+Let $\tilde{\mathbf{Y}}_{ij} = (\tilde{Y}_{ij1},\cdots, \tilde{Y}_{ijT_{ij}})^T$, $\boldsymbol{\xi}_{i} = (\xi_{i1},\cdots, \xi_{iN_1})^T$ and $\boldsymbol{\zeta}_{ij} = (\zeta_{ij1},\cdots, \zeta_{ijN_2})^T$. Let $\boldsymbol{\phi}_{k,ij} = (\phi_{k}(t_{ij1}),\cdots, \phi_{k}(t_{ijT_{ij}}))^T$, $\boldsymbol{\psi}_{l,ij} = (\psi_{l}(t_{ij1}),\cdots, \psi_{l}(t_{ijT_{ij}}))^T$, $\boldsymbol{\Phi}_{ij} = [\boldsymbol{\phi}_{1,ij},\cdots, \boldsymbol{\phi}_{N_1,ij}] \in \mathbb{R}^{T_{ij}\times N_1}$ and $\boldsymbol{\Psi}_{ij} = [\boldsymbol{\psi}_{1,ij},\cdots, \boldsymbol{\psi}_{N_2,ij}] \in \mathbb{R}^{T_{ij}\times N_2}$. Let $\boldsymbol{\epsilon}_{ij}=(\epsilon_{ij1},\cdots, \epsilon_{ijT_{ij}})^T$. Then
+$$
+\tilde{\mathbf{Y}}_{ij} = \boldsymbol{\Phi}_{ij}\boldsymbol{\xi}_{i} + \boldsymbol{\Psi}_{ij}\boldsymbol{\zeta}_{ij}+\boldsymbol{\epsilon}_{ij}\;.
+$$
+
+Let $\boldsymbol{\Phi}_i = [\boldsymbol{\Phi}_{i1}^T,\cdots,\boldsymbol{\Phi}^T_{in_i}]^T \in \mathbb{R}^{M_i\times N_1}$ and $\boldsymbol{\Psi}_i = \text{blockdiag}(\boldsymbol{\Psi}_{i1},\cdots,\boldsymbol{\Psi}_{in_i})\in\mathbb{R}^{M_i\times (n_iN_2)}$. We denote the second score vector by $\boldsymbol{\zeta}_{i} = (\boldsymbol{\zeta}_{i1}^T,\cdots, \boldsymbol{\zeta}_{in_i}^T)^T \in \mathbb{R}^{n_iN_2}$. Note that the score $\boldsymbol{\xi}_{i}$ has a diagonal covariance matrix $\boldsymbol{\Lambda}_1 = \text{diag}(\lambda^{(1)}_{1},\cdots, \lambda^{(1)}_{N_1})$ and $\boldsymbol{\zeta}_{i}$ has a diagonal covariance matrix $\boldsymbol{\Lambda}_2 = \mathbf{I}_{n_i}\otimes\text{diag}(\lambda^{(2)}_1,\cdots, \lambda^{(2)}_{N_2})$. Let $\tilde{\mathbf{Y}}_{i} =  (\tilde{\mathbf{Y}}^T_{i1}, \cdots, \tilde{\mathbf{Y}}^T_{in_i})^T \in \mathbb{R}^{M_i}$ and $\boldsymbol{\epsilon}_{i} = (\boldsymbol{\epsilon}^T_{i1},\cdots, \boldsymbol{\epsilon}^T_{in_i})^T\in \mathbb{R}^{M_i}$. Note that $\boldsymbol{\epsilon}_{i}$ has a diagonal covariance matrix $\sigma^2\mathbf{I}_{M_i}$. Finally, we obtain the mixed model representation as
+$$
+\begin{split}
+\tilde{\mathbf{Y}}_{i} &=  \boldsymbol{\Phi}_i\boldsymbol{\xi}_{i} + \boldsymbol{\Psi}_i\boldsymbol{\zeta}_{i} + \boldsymbol{\epsilon}_{i}\;,\\
+\begin{pmatrix}\boldsymbol{\xi}_{i}\\ \boldsymbol{\zeta}_{i} \\\boldsymbol{\epsilon}_{i}\end{pmatrix} & \sim \mathcal{N}\left[
+\begin{pmatrix} \mathbf{0}_{N_1}\\\mathbf{0}_{n_iN_2}\\\mathbf{0}_{M_i}\end{pmatrix},
+\begin{pmatrix} \boldsymbol{\Lambda}_1&0&0\\0&\boldsymbol{\Lambda}_2&0\\ 0&0&\sigma^2\mathbf{I}_{M_i}\end{pmatrix}
+\right]\;.
+\end{split}
+$$
+The MLE for the random effects is 
+\begin{equation} \label{MLE}
+\begin{pmatrix}\hat{\boldsymbol{\xi}}_i\\ \hat{\boldsymbol{\zeta}}_i\end{pmatrix} = \begin{pmatrix}\boldsymbol{\Lambda}_1 \boldsymbol{\Phi}^T_i \\ \boldsymbol{\Lambda}_2\boldsymbol{\Psi}^T_i\end{pmatrix}(\boldsymbol{\Phi}_i\boldsymbol{\Lambda}_1\boldsymbol{\Phi}^T_i  + \boldsymbol{\Psi}_i\boldsymbol{\Lambda}_2\boldsymbol{\Psi}^T_i + \sigma^2\mathbf{I}_{M_i})^{-1}\;\tilde{\mathbf{Y}}_{i} \;,
+\end{equation}
+where $\text{cov}(\tilde{\mathbf{Y}}_i) = (\boldsymbol{\Phi}_i\boldsymbol{\Lambda}_1\boldsymbol{\Phi}^T_i  + \boldsymbol{\Psi}_i\boldsymbol{\Lambda}_2\boldsymbol{\Psi}^T_i + \sigma^2\mathbf{I}_{M_i})$. The `mfpca.sc` function applies the equation (\ref{MLE}) to compute principal scores. As $\text{cov}(\tilde{\mathbf{Y}}_i) \in \mathcal{R}^{M_i\times M_i}$ can be of huge dimensions, its inverse requires $O(M_i^3)$ flops. Henderson (1950) presented the mixed model equations (MME) to estimate random effects, without the need for computing the inverse of $\text{cov}(\tilde{\mathbf{Y}}_i)$. By MME, we have 
+\begin{equation} \label{MME}
+\begin{pmatrix}\boldsymbol{\Phi}^T_i\boldsymbol{\Phi}_i/\sigma^2+ \boldsymbol{\Lambda}^{-1}_1 & \boldsymbol{\Phi}^T_i\boldsymbol{\Psi}_i/\sigma^2\\ \boldsymbol{\Psi}^T_i\boldsymbol{\Phi}_i/\sigma^2 & \boldsymbol{\Psi}^T_i\boldsymbol{\Psi}_i/\sigma^2 + \boldsymbol{\Lambda}^{-1}_2\end{pmatrix}\begin{pmatrix}{\boldsymbol{\xi}}_{i}\\ {\boldsymbol{\zeta}}_{i}\end{pmatrix} = \begin{pmatrix}\boldsymbol{\Phi}^T_i/\sigma^2 \\ \boldsymbol{\Psi}^T_i/\sigma^2\end{pmatrix}\tilde{\mathbf{Y}}_{i}\;,
+\end{equation}
+where the dimension of $\begin{pmatrix}\boldsymbol{\Phi}^T_i\boldsymbol{\Phi}_i/\sigma^2+ \boldsymbol{\Lambda}^{-1}_1 & \boldsymbol{\Phi}_i^T\boldsymbol{\Psi}_i/\sigma^2\\ \boldsymbol{\Psi}^T_i\boldsymbol{\Phi}_i/\sigma^2 & \boldsymbol{\Psi}_i^T\boldsymbol{\Psi}_i/\sigma^2 + \boldsymbol{\Lambda}^{-1}_2\end{pmatrix} \in \mathcal{R}^{(N_1+n_iN_2)\times (N_1+n_iN_2)}$ is much smallers than $\text{cov}(\tilde{\mathbf{Y}}_i)$. Moreover, its inverse can be computed by block. Therefore, we can save huge time to compute principal scores by MME, especially when $M_i$ is large. The `mfpca.sc2` function estimates principal scores by MME. If the estimation of $\sigma^2=0$, then we have
+$$
+\begin{pmatrix}\boldsymbol{\Phi}^T_i\boldsymbol{\Phi}_i + \boldsymbol{\Lambda}^{-1}_1 & \boldsymbol{\Phi}^T_i\boldsymbol{\Psi}_i \\ \boldsymbol{\Psi}^T_i\boldsymbol{\Phi}_i  & \boldsymbol{\Psi}^T_i\boldsymbol{\Psi}_i + \boldsymbol{\Lambda}^{-1}_2\end{pmatrix}\begin{pmatrix}{\boldsymbol{\xi}}_{i}\\ {\boldsymbol{\zeta}}_{i}\end{pmatrix} = \begin{pmatrix}\boldsymbol{\Phi}^T_i \\ \boldsymbol{\Psi}^T_i \end{pmatrix}\tilde{\mathbf{Y}}_{i}\;.
+$$
+
+# 3 Compare the computation time and estimate accuracy of `mfpca.sc` and `mfpca.sc2`.
+
+## 3.1 Simulation
+For regular functional data, I used the data generated from a true model in Di et al. (2009). For irregular functional data, curves were sampled on a sparse set of grid points. I considered $n=100$ subjects, $n_i=3$ visits per subject and $D=100,500,1000$ points per curve. The magnitude of noise $\sigma=0, 1$. For irregular senarios, the number of observed points per function, i.e. $T_{ij}$, is $0.1\times D$ or $0.5\times D$ .
+
+I simulated 100 data sets for each scenario and compared `mfpca.sc` and `mfpca.sc2` by computation time, mean integraed square errors (MISE) for eigenfunctions and observations. Results are shown in Table \ref{result}. For regularly sampled functional data, `mfpca.sc2` is much more computationally efficient. One reason is a more efficient way of smoothing and another reason is a better estimation of principal scores by MME. For irregular functional data, if there is not too many missings, `mfpca.sc2` is still much more efficient than `mfpca.sc`. If there is only several observations per curve, the computation times of `mfpca.sc` and `mfpca.sc2` are comparable. For the regular case with $D=1000$, I only show results of `mfpca.sc2` since `mfpca.sc` does not work for some simulated data sets.
+
+\begin{table}[!h] 
+\centering
+\caption{The average MISE for eigenfunctions and $\mathbf{Y}$ across $100$ simulations.} \label{result}
+\begin{tabular}{l|ccccccccc}
+\hline \hline
+& \multicolumn{4}{c}{mfpca.sc} && \multicolumn{4}{c}{mfpca.sc2} \\\cline{2-5} \cline{7-10}
+model & time(mins) & $\text{MISE}(\mathbf{Y})$ & $\text{MISE}(\Phi)$ & $\text{MISE}(\Psi)$ && time(mins) & $\text{MISE}(\mathbf{Y})$ & $\text{MISE}(\Phi)$ & $\text{MISE}(\Psi)$ \\
+\hline
+& \multicolumn{3}{c}{$D=100$ \& $\sigma=0$}  \\
+regular       & {\bf 0.31} & 0.0003 & 0.0817 & 0.0199 && {\bf 0.01} & 0.0000 & 0.0816 & 0.0197  \\
+irregular 0.1 & {\bf 0.04} & 0.0053 & 0.2148 & 0.1841 && {\bf 0.03} & 0.0072 & 0.2153 & 0.1820  \\
+irregular 0.5 & {\bf 0.08} & 0.0042 & 0.0925 & 0.0303 && {\bf 0.03} & 0.0046 & 0.0926 & 0.0303  \\
+& \multicolumn{3}{c}{$D=100$ \& $\sigma=1$}  \\
+regular       & {\bf 0.35} & 0.9529 & 0.0858 & 0.0227 && {\bf 0.01} & 0.9506 & 0.0865 & 0.0232  \\
+irregular 0.1 & {\bf 0.04} & 0.6092 & 0.2693 & 0.2591 && {\bf 0.03} & 0.6100 & 0.2693 & 0.2580  \\
+irregular 0.5 & {\bf 0.08} & 0.9059 & 0.1098 & 0.0365 && {\bf 0.04} & 0.9061 & 0.1100 & 0.0365  \\
+& \multicolumn{3}{c}{$D=500$ \& $\sigma=0$}  \\
+regular       & {\bf 42.17}& 0.0002 & 0.0815 & 0.0193 && {\bf 0.07} & 0.0000 & 0.0813 & 0.0192  \\
+irregular 0.1 & {\bf 0.83} & 0.0060 & 0.0966 & 0.0387 && {\bf 0.77} & 0.0060 & 0.0966 & 0.0387  \\
+irregular 0.5 & {\bf 5.14} & 0.0012 & 0.0837 & 0.0221 && {\bf 0.68} & 0.0012 & 0.0837 & 0.0221  \\
+& \multicolumn{3}{c}{$D=500$ \& $\sigma=1$}  \\
+regular       & {\bf 55.12}& 0.9904 & 0.0718 & 0.0178 && {\bf 0.07} & 0.9858 & 0.0794  &0.0193  \\
+irregular 0.1 & {\bf 0.84} & 0.9017 & 0.0992 & 0.0462 && {\bf 0.77} & 0.9017 & 0.0992 & 0.0462  \\
+irregular 0.5 & {\bf 6.04} & 0.9815 & 0.0845 & 0.0220 && {\bf 0.82} & 0.9815 & 0.0845 & 0.0220  \\
+& \multicolumn{3}{c}{$D=1000$ \& $\sigma=0$}  \\
+regular       &            &        &        &        && {\bf 0.33} & 0.0000 & 0.0748 & 0.0201  \\
+irregular 0.1 & {\bf 4.57} & 0.0042 & 0.0913 & 0.0289 && {\bf 4.14} & 0.0042 & 0.0913 & 0.0289  \\
+irregular 0.5 & {\bf 46.65}& 0.0007 & 0.0749 & 0.0214 && {\bf 3.55} & 0.0007 & 0.0749 & 0.0214  \\
+& \multicolumn{3}{c}{$D=1000$ \& $\sigma=1$}  \\
+regular       &            &        &        &        && {\bf 0.33} & 0.9813 & 0.0873 & 0.0212  \\
+irregular 0.1 & {\bf 4.61} & 0.9531 & 0.0904 & 0.0325 && {\bf 4.11} & 0.9531 & 0.0904 & 0.0325  \\
+irregular 0.5 & {\bf 59.72}& 0.9908 & 0.0836 & 0.0205 && {\bf 4.54} & 0.9908 & 0.0836 & 0.0205  \\
+\hline
+\end{tabular}
+\end{table}
+
+
+\newpage
+### 3.1.1 This exmaple applies regularly sampled functional data with $D=100$ and $\sigma=0$.
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+setwd("~/Downloads/mfpca")
+library(refund)
+library(MASS)
+library(mgcv)
+library(splines)
+if(!require("simex")){
+      install.packages("simex")
+      library(simex)
+}
+source("GeneData.R")
+source("fbps.cov.R")
+source("mfpca.sc2.R") 
+
+
+set.seed(1)
+Nsub=100;J=3;D=100;K1=4;K2=4;design="regular";weight="obs"
+data <- GeneData(M=Nsub, J=J, N=D, design=design, level=0.1, sigma=0)
+Y <- data$Y
+
+# True values
+evalues_true <- data$evalues
+eigenf_true <- data$eigenfunctions
+# Parameters
+id <- rep(1:Nsub, each=J)
+twoway <- TRUE
+
+
+#1. mfpca.cs in refund
+s1 <- Sys.time()
+fit1 <-  mfpca.sc(Y=Y, id=id, twoway=twoway)
+s2 <- Sys.time()
+time1 <- difftime(s2, s1, units = "mins")
+# MISE of observations
+diff1=0;num=0
+for(i in 1:nrow(Y)){
+  idx = which(!is.na(Y[i, ]))
+  num = num + length(idx)
+  diff1 = diff1 + sum(abs(fit1$Yhat[i,idx]-Y[i,idx])^2)
+}
+MISE1_Y <- diff1/num
+# MISE of eigenfucntions
+MISE1_eigen1 <- sum(unlist(lapply(1:K1, function(x){
+  min(sum((eigenf_true[[1]][,x]-fit1$efunctions[[1]][,x])^2),
+      sum((eigenf_true[[1]][,x]+fit1$efunctions[[1]][,x])^2))})))/(K1*D)
+MISE1_eigen2 <- sum(unlist(lapply(1:K2, function(x){
+  min(sum((eigenf_true[[2]][,x]-fit1$efunctions[[2]][,x])^2),
+      sum((eigenf_true[[2]][,x]+fit1$efunctions[[2]][,x])^2))})))/(K2*D)
+result1 <- round(c(as.numeric(time1), MISE1_Y, MISE1_eigen1, MISE1_eigen2),4)
+
+
+#2. the modified mfpca function: mfpca.cs2 
+s1 <- Sys.time()
+fit2 <-  mfpca.sc2(Y=Y, id=id, twoway=twoway, design=design, weight=weight)
+s2 <- Sys.time()
+time2 <- difftime(s2, s1, units = "mins")
+# MISE of observations
+diff2=0; num=0
+for(i in 1:nrow(Y)){
+  idx = which(!is.na(Y[i, ]))
+  num = num + length(idx)
+  diff2 = diff2 + sum(abs(fit2$Yhat[i,idx]-Y[i,idx])^2)
+}
+MISE2_Y <- diff2/num
+# MISE of eigenfucntions
+MISE2_eigen1 <- sum(unlist(lapply(1:K1, function(x){
+  min(sum((eigenf_true[[1]][,x]-fit2$efunctions[[1]][,x])^2),
+      sum((eigenf_true[[1]][,x]+fit2$efunctions[[1]][,x])^2))})))/(K1*D)
+MISE2_eigen2 <- sum(unlist(lapply(1:K2, function(x){
+  min(sum((eigenf_true[[2]][,x]-fit2$efunctions[[2]][,x])^2),
+      sum((eigenf_true[[2]][,x]+fit2$efunctions[[2]][,x])^2))})))/(K2*D)
+result2 <- round(c(as.numeric(time2), MISE2_Y, MISE2_eigen1, MISE2_eigen2),4)
+
+
+result <- rbind(result1,result2)
+colnames(result) <- c("computation time", "MISE(Y)", "MISE(Phi)", "MISE(Psi)")
+print("The result from mfpca.sc is")
+result[1,]
+print("The result from mfpca.sc2 is")
+result[2,]
+```
+
+### 3.1.2 This exmaple applies regularly sampled functional data with $D=1000$ and $\sigma=1$. 
+I only used the `mfpca.cs2` function. It took less than one minute to get results while `mfpca.cs` took too long time to work for this case. Note that there is a new input parameter in `mfpca.cs2`, `design` with default value `irregular`. For regular data, `design=irregular` also works. The major difference is the way of smoothing sample covariances. Thus, I also set `design=irregular` so as to compare the computation time of the two smoothing methods. 
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+set.seed(1)
+Nsub=100;J=3;D=1000;K1=4;K2=4
+data <- GeneData(M=Nsub, J=J, N=D, design="regular", level=0.1, sigma=1)
+Y <- data$Y
+# Parameters
+id <- rep(1:Nsub, each=J)
+twoway <- TRUE
+
+#1. the modified mfpca function: mfpca.cs2  with design="regular"
+s1 <- Sys.time()
+fit1 <-  mfpca.sc2(Y=Y, id=id, twoway=twoway, design="regular")
+s2 <- Sys.time()
+time1 <- difftime(s2, s1, units = "mins")
+
+#2. the modified mfpca function: mfpca.cs2  with design="irregular"
+s1 <- Sys.time()
+fit2 <-  mfpca.sc2(Y=Y, id=id, twoway=twoway, design="irregular")
+s2 <- Sys.time()
+time2 <- difftime(s2, s1, units = "mins")
+
+
+print(paste("The computetation time of mfpca.sc2 with design=regular is",
+            round(as.numeric(time1),2),"mins"))
+print(paste("The computetation time of mfpca.sc2 with design=irregular is",
+             round(as.numeric(time2),2),"mins"))
+```
+
+
+
+## 3.2 Real data
+I used DTI data shown in the `mfpca.sc` document. There are 130 subjects and $D=93$ with some missings in the DTI data. The number of visits varies from one to five. The `mpca.sc2` function saves much more time than `mpca.sc` and the MISEs of two functions are the same. 
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data(DTI)
+DTI = subset(DTI, Nscans < 6)  
+id  = DTI$ID
+Y = DTI$cca
+#Y[which(is.na(Y)==1)] = 0
+
+#1. mfpca.cs in refund
+s1 <- Sys.time()
+fit1 <-  mfpca.sc(Y=Y, id=id, twoway=TRUE)
+s2 <- Sys.time()
+time1 <- difftime(s2, s1, units = "mins")
+# MISE of observations
+diff1=0;num=0
+for(i in 1:nrow(Y)){
+  idx = which(!is.na(Y[i, ]))
+  num = num + length(idx)
+  diff1 = diff1 + sum(abs(fit1$Yhat[i,idx]-Y[i,idx])^2)
+}
+MISE1_Y <- diff1/num
+result1 <- round(c(as.numeric(time1), MISE1_Y),4)
+
+#2. the modified mfpca function: mfpca.cs2 
+s1 <- Sys.time()
+fit2 <-  mfpca.sc2(Y=Y, id=id, twoway=TRUE, design="irregular", weight="obs")
+s2 <- Sys.time()
+time2 <- difftime(s2, s1, units = "mins")
+# MISE of observations
+diff2=0; num=0
+for(i in 1:nrow(Y)){
+  idx = which(!is.na(Y[i, ]))
+  num = num + length(idx)
+  diff2 = diff2 + sum(abs(fit2$Yhat[i,idx]-Y[i,idx])^2)
+}
+MISE2_Y <- diff2/num
+result2 <- round(c(as.numeric(time2), MISE2_Y),4)
+
+
+result <- rbind(result1,result2)
+colnames(result) <- c("computation time", "MISE(Y)")
+print("The result from mfpca.sc is")
+result[1,]
+print("The result from mfpca.sc2 is")
+result[2,]
+```
+
+# 4 The new parameter `weight`.
+Considering the number of visits may change across subjects, we introduce a new parameter `weight` to compromise the difference of visits per subject. If `weight=obs`, the sample estimate is weighted by observations. If `weight=subjs`, the sample estimate is weighted by subjects. It would help the cases in which some subjects have lots of visits while others may have few. Note that `weight` only works for `regular` design. For `irregular` data, the sample covariance is always estimated under `weight=obs`.
+
+## 4.1
+**Part 1:** `weight=obs`.
+
+Let $Y_{ij}(t) = X_{ij}(t) - \mu(t) - \eta_j(t)$. The sample mean is estimated by $\hat{\mu}(t)=\sum_{i=1}^n\sum_{j=1}^{n_i}X_{ij}(t)/\sum_{i=1}^nn_i$. Furthermore, $K_T(t_s,t_r)=\sum_{i=1}^n\sum_{j=1}^{n_i}\{Y_{ij}(t_s)Y_{ij}(t_r)\}/\sum_{i=1}^nn_i$ and $K_B(t_s,t_r)=2\sum_{i=1}^n\sum_{j_1<j_2}\{Y_{ij_1}(t_s)Y_{ij_2}(t_r)\}/\sum_{i=1}^nn_i(n_i-1)$.
+
+**Part 2:** `weight=subj`.
+
+The sample mean is estimated by $\hat{\mu}(t)=\frac{1}{n}\sum_{i=1}^n\frac{1}{n_i}\sum_{j=1}^{n_i}X_{ij}(t)$. Furthermore, $K_T(t_s,t_r)=\frac{1}{n}\sum_{i=1}^n\frac{1}{n_i}\sum_{j=1}^{n_i}Y_{ij}(t_s)Y_{ij}(t_r)$ and $K_B(t_s,t_r)=\frac{2}{n}\sum_{i=1}^n\frac{1}{n_i(n_i-1)}\sum_{j_1<j_2}Y_{ij_1}(t_s)Y_{ij_2}(t_r)$.
+
+## 4.2 Simualtion
+I used the regular functional data with $D=100$ in Section~3. The number of visits is 3 per subject. Thus, we would get the same results under `weight=obs` and `weight=subj`. For the second scenario, I generated regular functional data with $n_i$ varies from 1 to 5. I simulated 100 data sets for each scenario. Results are shown in Table \ref{result2}.
+
+\begin{table}[!h] 
+\centering
+\caption{The average MISE for eigenfunctions and $\mathbf{Y}$ across $100$ simulations.} \label{result2}
+\begin{tabular}{l|ccccccc}
+\hline \hline
+& \multicolumn{3}{c}{weight=obs} && \multicolumn{3}{c}{weight=subj} \\\cline{2-4} \cline{6-8}
+ & $\text{MISE}(\mathbf{Y})$ & $\text{MISE}(\Phi)$ & $\text{MISE}(\Psi)$ &&  $\text{MISE}(\mathbf{Y})$ & $\text{MISE}(\Phi)$ & $\text{MISE}(\Psi)$ \\
+\hline
+& \multicolumn{3}{c}{ $n_i=3$ }  \\
+$\sigma=0$   & 0      & 0.0815 & 0.0197  &&  0      & 0.0815 & 0.0197  \\
+$\sigma=1$   & 0.9512 & 0.0865 & 0.0232  &&  0.9512 & 0.0865 & 0.0232  \\
+& \multicolumn{3}{c}{ $n_i \sim Unif[1,5]$ }  \\
+$\sigma=0$   & 0.0398 & 0.1475 & 0.0688  &&  0.0359 & 0.1122 & 0.1138  \\
+$\sigma=1$   & 0.9876 & 0.1356 & 0.0919  &&  0.9761 & 0.1192 & 0.1065   \\
+\hline
+\end{tabular}
+\end{table}
+
+
+
+
+
+
+
+
+
+
+
+
