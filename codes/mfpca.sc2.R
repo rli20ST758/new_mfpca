@@ -7,11 +7,12 @@
 ## @param weight: default as "observations". It only works for regular data.
 ##                "obs": the sample covariance is weighted equally by observations ;
 ##                "subj": the sample covariance is weighted equally by subjects;.
+## @param nknots: the number of knots with default value of 35. 
 ################################################################################################
 
 mfpca.sc2 <- function(Y = NULL, id = NULL, visit = NULL, twoway = FALSE, design = "irregular",
-                      weight = "obs", argvals = NULL, nbasis = 10, pve = 0.99, npc = NULL,
-                      center = TRUE, integration = "trapezoidal") {
+                      weight = "obs", argvals = NULL, nbasis = 10, nknots = 35, pve = 0.99, 
+                      npc = NULL, center = TRUE, integration = "trapezoidal") {
   
   library(simex)
   if (!is.null(visit)){
@@ -26,7 +27,6 @@ mfpca.sc2 <- function(Y = NULL, id = NULL, visit = NULL, twoway = FALSE, design 
   M = length(ID) ## number of subjects
   D = NCOL(Y)  
   I = NROW(Y) 
-  nknots = nbasis + 4 ## the number of knots
   nVisits = data.frame(table(id))  ## calculate number of visitis for each subject
   colnames(nVisits) = c("id", "numVisits")
   if (is.null(argvals))  argvals = seq(0, 1, length.out=D)  

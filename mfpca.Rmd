@@ -315,8 +315,12 @@ diff_mu = sum(abs(fit1$mu - fit2$mu))
 diff_eta = sum(abs(fit1$eta - fit2$eta))
 # difference between eigen components
 diff_evalues = sum(abs(unlist(fit1$evalues) - unlist(fit2$evalues)))
-diff_efunctions = sum(abs(unlist(fit1$efunctions) - unlist(fit2$efunctions)))
-
+diff_efunctions = sum(unlist(lapply(1:length(fit1$evalues[[1]]), function(x){
+      min(sum(abs(fit1$efunctions[[1]][,x]-fit2$efunctions[[1]][,x])),
+          sum(abs(fit1$efunctions[[1]][,x]+fit2$efunctions[[1]][,x])))
+  + min(sum(abs(fit1$efunctions[[2]][,x]-fit2$efunctions[[2]][,x])),
+        sum(abs(fit1$efunctions[[2]][,x]+fit2$efunctions[[2]][,x])))
+    })))
 # difference between estimated observation
 diff_Yhat = sum(abs(fit1$Yhat-fit2$Yhat[order(idx),]))
 
