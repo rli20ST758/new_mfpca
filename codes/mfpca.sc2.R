@@ -1,4 +1,5 @@
 
+
 ################################################################################################
 ## @param design: default as "irregular". 
 ##                "regular" design refers to dense and regularly sampled functional data;
@@ -6,11 +7,12 @@
 ## @param weight: default as "observations". It only works for regular data.
 ##                "obs": the sample covariance is weighted equally by observations ;
 ##                "subj": the sample covariance is weighted equally by subjects;.
+## @param nknots: the number of knots with default value of 35. 
 ################################################################################################
 
 mfpca.sc2 <- function(Y = NULL, id = NULL, visit = NULL, twoway = FALSE, design = "irregular",
-                      weight = "obs", argvals = NULL, nbasis = 10, pve = 0.99, npc = NULL,
-                      center = TRUE, integration = "trapezoidal") {
+                      weight = "obs", argvals = NULL, nbasis = 10, nknots = 35, pve = 0.99, 
+                      npc = NULL, center = TRUE, integration = "trapezoidal") {
   
   library(simex)
   if (!is.null(visit)){
@@ -18,21 +20,19 @@ mfpca.sc2 <- function(Y = NULL, id = NULL, visit = NULL, twoway = FALSE, design 
   }else{ visit = ave(id, id, FUN=seq_along)}
   ## for irregular data, don't consider weights by subjects
   if (design=="irregular") weight = "obs" 
-  Y.df = data.frame(id=id, visit = visit)
+  Y.df = data.frame(id=id, visit=visit)
   Y.df$Y = Y
   J = length(unique(visit))  ## gets max number of visits
-  ID = unique(id)
-  M = length(unique(id)) ## number of subjects
+  ID = sort(unique(id))
+  M = length(ID) ## number of subjects
   D = NCOL(Y)  
   I = NROW(Y) 
-  nknots = nbasis + 4 ## the number of knots
-  #nknots = round(0.1*D) 
   nVisits = data.frame(table(id))  ## calculate number of visitis for each subject
   colnames(nVisits) = c("id", "numVisits")
   if (is.null(argvals))  argvals = seq(0, 1, length.out=D)  
   if (center && weight=="obs") {
     meanY = colMeans(Y, na.rm=TRUE)
-    mu = smooth.spline(argvals,meanY,all.knots =TRUE)$y
+    mu = smooth.spline(argvals,meanY)$y
     #d.vec = rep(argvals, each = I)
     #gam0 = gam(as.vector(Y) ~ s(d.vec, k = nbasis))
     #mu = predict(gam0, newdata = data.frame(d.vec = argvals))  
@@ -41,7 +41,7 @@ mfpca.sc2 <- function(Y = NULL, id = NULL, visit = NULL, twoway = FALSE, design 
       temp = subset(Y.df, id==ID[m])$Y
       if (nrow(temp>1)) colMeans(temp)
       else temp}))/M  
-    mu = smooth.spline(argvals,meanY,all.knots =TRUE)$y
+    mu = smooth.spline(argvals,meanY)$y
   } else {
     mu = rep(0, D)
   }
@@ -51,13 +51,13 @@ mfpca.sc2 <- function(Y = NULL, id = NULL, visit = NULL, twoway = FALSE, design 
   if (center && twoway) {
     Y.tilde <- matrix(NA, nrow = nrow(Y), ncol = ncol(Y))
     for(j in 1:J){
-      ind.j <- which(Y.df$visit == j)
+      ind.j <- which(Y.df$visit==j)
       if(length(ind.j)>1) {
         fit.eta = colMeans(Y.df$Y[ind.j,], na.rm=TRUE)
       } else {
         fit.eta = Y.df$Y
       }
-      mueta[, j] = smooth.spline(argvals,fit.eta,all.knots =TRUE)$y
+      mueta[, j] = smooth.spline(argvals,fit.eta)$y
       eta[,j] = mueta[,j] - mu
       Y.tilde[ind.j,] <- Y.df$Y[ind.j,] - matrix(mueta[,j], nrow = length(ind.j), ncol = D, byrow = TRUE)
     }
@@ -65,15 +65,15 @@ mfpca.sc2 <- function(Y = NULL, id = NULL, visit = NULL, twoway = FALSE, design 
     Y.tilde = Y - matrix(mu, I, D, byrow = TRUE)  ## subtract the mean function from Y
   }
   
+  ## split Y.tilde by subjects
+  Y.tilde.split = lapply(1:M, function(m){matrix(Y.tilde[id==ID[m],],nc=D)}) 
+
   
   ##################################################################################
   #      "regular" design
   ###     Smoothing sample covariances by sandwich smoother.
   ##################################################################################
   if (design == "regular") {
-
-    ## split Y.tilde by subjects
-    Y.tilde.split = lapply(1:M, function(m){matrix(Y.tilde[id==ID[m],],nc=D)}) 
     
     ##################################################################################
     #      CALCULATE Kt, THE TOTAL COVARIANCE
@@ -85,7 +85,6 @@ mfpca.sc2 <- function(Y = NULL, id = NULL, visit = NULL, twoway = FALSE, design 
       cov.sum = lapply(1:M, function(m){crossprod(Y.tilde.split[[m]])/nVisits[m,2]})
       G.0 = Reduce("+",cov.sum)/M
     } ## end of if(weight=="obs")
-    
     diag.G0 = diag(G.0) 
     diag(G.0) = NA
     npc.0 = fbps.cov(G.0, diag.remove=T, knots=nknots)$cov
@@ -98,7 +97,6 @@ mfpca.sc2 <- function(Y = NULL, id = NULL, visit = NULL, twoway = FALSE, design 
     ##################################################################################
     cov.sum = matrix(0, D, D)
     ids.KB = nVisits[nVisits$numVisits > 1, c("id")]
-    
     if (weight=="obs") {
       for (m in 1:M) {
         if (ID[m] %in% ids.KB) { ## check if mth subject has at least 2 visits
@@ -109,8 +107,7 @@ mfpca.sc2 <- function(Y = NULL, id = NULL, visit = NULL, twoway = FALSE, design 
     } else {
       for (m in 1:M) {
         if (ID[m] %in% ids.KB) { ## check if mth subject has at least 2 visits
-          cov.sum = cov.sum + (tcrossprod(colSums(Y.tilde.split[[m]])) 
-                               - crossprod(Y.tilde.split[[m]]))/(nVisits[m,2]*(nVisits[m,2]-1))
+          cov.sum = cov.sum + (tcrossprod(colSums(Y.tilde.split[[m]]))-crossprod(Y.tilde.split[[m]]))/(nVisits[m,2]*(nVisits[m,2]-1))
         }
       }
       G.0b = cov.sum/M ## between covariance
@@ -132,15 +129,12 @@ mfpca.sc2 <- function(Y = NULL, id = NULL, visit = NULL, twoway = FALSE, design 
     #      CALCULATE Kt, THE TOTAL COVARIANCE
     ##################################################################################
     cov.sum = cov.count = cov.mean = matrix(0, D, D)
-    row.ind = 0  ## get row index of data frame 
     for (m in 1:M) {
-      for(j in 1:nVisits[m, 2]) {
-        row.ind.temp <- row.ind  + j
-        obs.points = which(!is.na(Y[row.ind.temp,]))
-        cov.count[ obs.points, obs.points ] <- cov.count[ obs.points, obs.points ] + 1
-        cov.sum[ obs.points, obs.points ] <- cov.sum[ obs.points, obs.points ] + tcrossprod(Y.tilde[row.ind.temp, obs.points])
+      for (j in 1:nVisits[m,2]) {
+        obs.points = which(!is.na(Y.tilde.split[[m]][j,]))
+        cov.count[obs.points, obs.points] <- cov.count[obs.points, obs.points] + 1
+        cov.sum[obs.points, obs.points] <- cov.sum[obs.points, obs.points] + tcrossprod(Y.tilde.split[[m]][j, obs.points])
       }
-      row.ind = row.ind + nVisits[m, 2]
     } 
     
     G.0 = ifelse(cov.count == 0, NA, cov.sum/cov.count)  
@@ -160,25 +154,21 @@ mfpca.sc2 <- function(Y = NULL, id = NULL, visit = NULL, twoway = FALSE, design 
     ###     first, calculate the possible pairs of same-subject visits
     ##################################################################################
     cov.sum = cov.count = cov.mean = matrix(0, D, D)
-    row.ind = 0
     ids.KB = nVisits[nVisits$numVisits > 1, c("id")]
     
-    for(m in 1:M) {
-      if (Y.df$id[m] %in% ids.KB){ ## check if mth subject has at least 2 visits
-        for(j in 1:(nVisits[m, 2]-1) ) {
-          row.ind1 <- row.ind + j
-          obs.points1 = which(!is.na(Y[row.ind1,]))
-          for(k in (j+1):nVisits[m, 2] ) {
-            row.ind2 <- row.ind + k
-            obs.points2 = which(!is.na(Y[row.ind2,]))
-            cov.count[ obs.points1, obs.points2 ] <- cov.count[ obs.points1, obs.points2 ] + 1
-            cov.sum[ obs.points1, obs.points2 ] <- cov.sum[ obs.points1, obs.points2 ] + tcrossprod(Y.tilde[row.ind1, obs.points1], Y.tilde[row.ind2, obs.points2]) 
-            cov.count[ obs.points2, obs.points1 ] <- cov.count[ obs.points2, obs.points1 ] + 1
-            cov.sum[ obs.points2, obs.points1 ] <- cov.sum[ obs.points2, obs.points1 ] +  tcrossprod(Y.tilde[row.ind2, obs.points2], Y.tilde[row.ind1, obs.points1])                                                        
+    for (m in 1:M) {
+      if (ID[m] %in% ids.KB) { ## check if mth subject has at least 2 visits
+        for (j in 1:(nVisits[m, 2]-1)) {
+          obs.points1 = which(!is.na(Y.tilde.split[[m]][j,]))
+          for(k in (j+1):nVisits[m, 2]) {
+            obs.points2 = which(!is.na(Y.tilde.split[[m]][k,]))
+            cov.count[obs.points1, obs.points2] <- cov.count[obs.points1, obs.points2] + 1
+            cov.sum[obs.points1, obs.points2] <- cov.sum[obs.points1, obs.points2] + tcrossprod(Y.tilde.split[[m]][j, obs.points1], Y.tilde.split[[m]][k, obs.points2]) 
+            cov.count[obs.points2, obs.points1] <- cov.count[obs.points2, obs.points1] + 1
+            cov.sum[obs.points2, obs.points1] <- cov.sum[obs.points2, obs.points1] + tcrossprod(Y.tilde.split[[m]][k, obs.points2], Y.tilde.split[[m]][j, obs.points1])                                                        
           }
         }
       }
-      row.ind = row.ind + nVisits[m, 2]
     }
     
     G.0b <- ifelse(cov.count==0, NA,  cov.sum/cov.count)  ## between covariance
@@ -235,8 +225,6 @@ mfpca.sc2 <- function(Y = NULL, id = NULL, visit = NULL, twoway = FALSE, design 
   Yhat = Yhat.subject = matrix(0, I, D)
   Z1 = efunctions[[1]]
   Z2 = efunctions[[2]]
-  int1 = matrix(0, M, npc[[1]])
-  int2 = matrix(0, I, npc[[2]])
   score1 = matrix(0, M, npc[[1]])
   score2 = matrix(0, I, npc[[2]])
   
@@ -244,18 +232,10 @@ mfpca.sc2 <- function(Y = NULL, id = NULL, visit = NULL, twoway = FALSE, design 
   ###################################################################
   ### Finally, calculate the principal component scores
   ###################################################################
+  row.split = lapply(1:M, function(m){which(id==ID[m])}) 
   if (design == "regular") {
-    row.ind = 0
-    for(m in 1:M) {
-      idx = (row.ind+1):(row.ind+nVisits[m,2])
-      int1[m,] = colSums(Y.tilde[idx,]%*%Z1)
-      int2[idx,] = Y.tilde[idx,]%*%Z2
-      row.ind = row.ind + nVisits[m,2]
-    }
-    
     # if sigma2 is very small
     if (sigma2<1e-4) {
-      row.ind = 0
       for(m in 1:M) {
         Jm = nVisits[m, 2]  ## number of visits for mth subject
         A = Jm*(t(Z1)%*%Z1)
@@ -263,7 +243,7 @@ mfpca.sc2 <- function(Y = NULL, id = NULL, visit = NULL, twoway = FALSE, design 
         C = t(B)
         temp = ginv(t(Z2)%*%Z2)
         #invD = as.matrix(bdiag(lapply(1:Jm, function(j){temp})))
-        invD = diag.block(temp, Jm )
+        invD = diag.block(temp, Jm)
         MatE = ginv(A-B%*%invD%*%C)
         MatF = -invD%*%C%*%MatE
         MatG = -MatE%*%B%*%invD
@@ -271,18 +251,18 @@ mfpca.sc2 <- function(Y = NULL, id = NULL, visit = NULL, twoway = FALSE, design 
         Mat1 = cbind(MatE,MatG)
         Mat2 = cbind(MatF,MatH)
         
-        idx = (row.ind+1):(row.ind+Jm)
-        int = c(int1[m,],as.vector(t(int2[idx,])))
-        score1[m,] = Mat1 %*% int
-        score2[idx,] = matrix(Mat2%*%int,nc=npc[[2]],byrow=T)
-        for (j in 1:Jm) {
-          row.ind = row.ind + 1
-          Yhat[row.ind,] = mu+eta[,j]+as.vector(Z1%*%score1[m,])+as.vector(Z2%*%score2[row.ind,])
-          Yhat.subject[row.ind, ] = as.matrix(mu)+eta[,j]+as.vector(Z1%*%score1[m,])
+      
+        int1 = colSums(Y.tilde.split[[m]]%*%Z1)
+        int2 = Y.tilde.split[[m]]%*%Z2
+        int = c(int1,as.vector(t(int2)))
+        score1[m, ] = Mat1 %*% int
+        score2[row.split[[m]], ] = matrix(Mat2%*%int,nc=npc[[2]],byrow=T)
+        for (j in row.split[[m]]) {
+          Yhat.subject[j, ] = as.matrix(mu) + eta[ ,visit[j]] + as.vector(Z1%*%score1[m, ])
+          Yhat[j, ] = Yhat.subject[j, ] + as.vector(Z2%*%score2[j, ])
         }
       } #end m
     } else {
-      row.ind <- 0
       for(m in 1:M) {
         Jm = nVisits[m, 2]  ## number of visits for mth subject
         A =  Jm*(t(Z1)%*%Z1)/sigma2 + diag(1/evalues[[1]])
@@ -290,7 +270,7 @@ mfpca.sc2 <- function(Y = NULL, id = NULL, visit = NULL, twoway = FALSE, design 
         C = t(B)
         temp = ginv(t(Z2)%*%Z2/sigma2 + diag(1/evalues[[2]]))
         #invD = as.matrix(bdiag(lapply(1:Jm, function(j){temp})))
-        invD = diag.block( temp, Jm )
+        invD = diag.block(temp, Jm)
         MatE = ginv(A-B%*%invD%*%C)
         MatF = -invD%*%C%*%MatE
         MatG = -MatE%*%B%*%invD
@@ -298,14 +278,15 @@ mfpca.sc2 <- function(Y = NULL, id = NULL, visit = NULL, twoway = FALSE, design 
         Mat1 = cbind(MatE,MatG)
         Mat2 = cbind(MatF,MatH)
         
-        idx = (row.ind+1):(row.ind+Jm)
-        int = c(int1[m,],as.vector(t(int2[idx,])))/sigma2
+  
+        int1 = colSums(Y.tilde.split[[m]]%*%Z1)
+        int2 = Y.tilde.split[[m]]%*%Z2
+        int = c(int1,as.vector(t(int2)))/sigma2
         score1[m,] = Mat1 %*% int
-        score2[idx,] = matrix(Mat2%*%int,nc=npc[[2]],byrow=T)
-        for (j in 1:Jm) {
-          row.ind = row.ind + 1
-          Yhat[row.ind,] = mu+eta[,j]+as.vector(Z1%*%score1[m,])+as.vector(Z2%*%score2[row.ind,])
-          Yhat.subject[row.ind, ] = mu+eta[,j]+as.vector(Z1%*%score1[m,])
+        score2[row.split[[m]], ] = matrix(Mat2%*%int,nc=npc[[2]],byrow=T)
+        for (j in row.split[[m]]) {
+          Yhat.subject[j, ] = mu + eta[,visit[j]] + as.vector(Z1%*%score1[m, ])
+          Yhat[j, ] =  Yhat.subject[j, ] + as.vector(Z2%*%score2[j, ])
         }
       } #end m
     } #end (if sigma2 > 1e-4)
@@ -314,17 +295,12 @@ mfpca.sc2 <- function(Y = NULL, id = NULL, visit = NULL, twoway = FALSE, design 
   
   
   if (design == "irregular") {
-    
     # if sigma2 is very small
     if (sigma2<1e-4) {
-      row.ind = 0
       for(m in 1:M) {
         Jm = nVisits[m, 2]  ## number of visits for mth subject
-        obs.points = lapply(1:Jm, function(j) which(!is.na(Y[row.ind+j, ])))
-        Yij.center = lapply(1:Jm, function(j) {
-          observed = obs.points[[j]]  
-          Y[row.ind+j,observed]-mu[observed]-eta[observed,j]
-        })
+        obs.points = lapply(1:Jm, function(j) which(!is.na(Y.tilde.split[[m]][j, ])))
+        Yij.center = lapply(1:Jm, function(j) {Y.tilde.split[[m]][j,obs.points[[j]]]})
         Yi.center = matrix(unlist(Yij.center))
         
         A = t(Z1[unlist(obs.points),])%*%Z1[unlist(obs.points),]
@@ -340,28 +316,24 @@ mfpca.sc2 <- function(Y = NULL, id = NULL, visit = NULL, twoway = FALSE, design 
         Mat1 = cbind(MatE,MatG)
         Mat2 = cbind(MatF,MatH)
         
-        idx = (row.ind+1):(row.ind+Jm)
-        int1[m,] = t(Z1[unlist(obs.points),])%*%Yi.center
-        int2[idx,] = do.call('rbind',lapply(1:Jm,function(j){t(t(Z2[obs.points[[j]],])%*%Yij.center[[j]])}))
-        int = c(int1[m,],as.vector(t(int2[idx,])))
+        
+        int1 = t(Z1[unlist(obs.points),])%*%Yi.center
+        int2 = do.call('rbind',lapply(1:Jm,function(j){t(t(Z2[obs.points[[j]],])%*%Yij.center[[j]])}))
+        int = c(int1,as.vector(t(int2)))
         score1[m,] = Mat1 %*% int
-        score2[idx,] = matrix(Mat2%*%int,nc=npc[[2]],byrow=T)
-        for (j in 1:Jm) {
-          row.ind = row.ind + 1
-          Yhat[row.ind,] = mu+eta[,j]+as.vector(Z1%*%score1[m,])+as.vector(Z2%*%score2[row.ind,])
-          Yhat.subject[row.ind, ] = mu+eta[,j]+as.vector(Z1%*%score1[m,])
+        score2[row.split[[m]],] = matrix(Mat2%*%int,nc=npc[[2]],byrow=T)
+        for (j in row.split[[m]]) {
+          Yhat.subject[j, ] = mu + eta[ ,visit[j]] + as.vector(Z1%*%score1[m,])
+          Yhat[j, ] =  Yhat.subject[j, ] + as.vector(Z2%*%score2[j,])
         }
       } #end m
     } else {
-      row.ind = 0
       for(m in 1:M) {
         Jm = nVisits[m, 2]  ## number of visits for mth subject
-        obs.points = lapply(1:Jm, function(j) which(!is.na(Y[row.ind+j, ])))
-        Yij.center = lapply(1:Jm, function(j) {
-          observed = obs.points[[j]]  
-          Y[row.ind+j,observed]-mu[observed]-eta[observed,j]
-        })
+        obs.points = lapply(1:Jm, function(j) which(!is.na(Y.tilde.split[[m]][j, ])))
+        Yij.center = lapply(1:Jm, function(j) {Y.tilde.split[[m]][j,obs.points[[j]]]})
         Yi.center = matrix(unlist(Yij.center))
+        
         
         A = t(Z1[unlist(obs.points),])%*%Z1[unlist(obs.points),]/sigma2 + diag(1/evalues[[1]])
         B = do.call("cbind",lapply(1:Jm, function(j){t(Z1[obs.points[[j]],])%*%Z2[obs.points[[j]],]}))/sigma2
@@ -377,16 +349,15 @@ mfpca.sc2 <- function(Y = NULL, id = NULL, visit = NULL, twoway = FALSE, design 
         Mat1 = cbind(MatE,MatG)
         Mat2 = cbind(MatF,MatH)
         
-        idx = (row.ind+1):(row.ind+Jm)
-        int1[m,] = t(Z1[unlist(obs.points),])%*%Yi.center
-        int2[idx,] = do.call('rbind',lapply(1:Jm,function(j){t(t(Z2[obs.points[[j]],])%*%Yij.center[[j]])}))
-        int = c(int1[m,],as.vector(t(int2[idx,])))/sigma2
+       
+        int1 = t(Z1[unlist(obs.points),])%*%Yi.center
+        int2 = do.call('rbind',lapply(1:Jm,function(j){t(t(Z2[obs.points[[j]],])%*%Yij.center[[j]])}))
+        int = c(int1,as.vector(t(int2)))/sigma2
         score1[m,] = Mat1 %*% int
-        score2[idx,] = matrix(Mat2%*%int,nc=npc[[2]],byrow=T)
-        for (j in 1:Jm) {
-          row.ind = row.ind + 1
-          Yhat[row.ind,] = mu+eta[,j]+as.vector(Z1%*%score1[m,])+as.vector(Z2%*%score2[row.ind,])
-          Yhat.subject[row.ind, ] = mu+eta[,j]+as.vector(Z1%*%score1[m,])
+        score2[row.split[[m]],] = matrix(Mat2%*%int, nc=npc[[2]], byrow=T)
+        for (j in row.split[[m]]) {
+          Yhat.subject[j, ] = mu + eta[ ,visit[j]] + as.vector(Z1%*%score1[m,])
+          Yhat[j, ] = Yhat.subject[j, ] + as.vector(Z2%*%score2[j, ])
         }
       } #end m
     } # end if (sigma2>1e-4)
