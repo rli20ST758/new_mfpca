@@ -19,6 +19,8 @@ output: pdf_document
 # Introduction
 The report is organized as following. We first discussthe part of the `mfpca.sc` function which costs long computation time in Section 1. We describe details of how to speed up the `mfpca.sc` function in Section 2. Section 3 guarantees the numerical accuracy of the updated function by simulation. In Section 4, we introduce a new parameter `weight` to select the way of computing smaple convariance. 
 
+The original `mfpca.sc` function requires data arranged by ID. If we restructure data, `mfpca.sc` doesn't work. The updated function fixed this problem. If we restructure datasets by shuffling rows, the updated function would give the same results of estimation. We show it in Section 3.3.
+
 
 # 1 The part of the `mfpca.sc` function which makes it cost long computation time.
 I checked the `mfpca.sc` function in the R package `refund`. There are two parts that cost much time. 
@@ -125,15 +127,15 @@ irregular 0.5 & {\bf 59.72}& 0.9908 & 0.0836 & 0.0205 && {\bf 4.54} & 0.9908 & 0
 \newpage
 ### 3.1.1 This exmaple applies regularly sampled functional data with $D=100$ and $\sigma=0$.
 ```{r echo=TRUE, message=FALSE, warning=FALSE}
-setwd("~/Downloads/mfpca")
-library(refund)
-library(MASS)
-library(mgcv)
-library(splines)
-if(!require("simex")){
-      install.packages("simex")
-      library(simex)
-}
+setwd("~/Users/new_mfpca/codes")
+rm(list=ls())
+## Check for packages needed to run analyses
+pckgs <- c("refund","MASS","splines","simex","mgcv")
+sapply(pckgs, function(x) if(!require(x,character.only=TRUE,quietly=TRUE)) {
+  install.packages(x)
+  require(x, character.only=TRUE)
+})
+rm(list=c("pckgs"))
 source("GeneData.R")
 source("fbps.cov.R")
 source("mfpca.sc2.R") 
@@ -201,9 +203,9 @@ result2 <- round(c(as.numeric(time2), MISE2_Y, MISE2_eigen1, MISE2_eigen2),4)
 result <- rbind(result1,result2)
 colnames(result) <- c("computation time", "MISE(Y)", "MISE(Phi)", "MISE(Psi)")
 print("The result from mfpca.sc is")
-result[1,]
+print(result[1,])
 print("The result from mfpca.sc2 is")
-result[2,]
+print(result[2,])
 ```
 
 ### 3.1.2 This exmaple applies regularly sampled functional data with $D=1000$ and $\sigma=1$. 
@@ -239,7 +241,7 @@ print(paste("The computetation time of mfpca.sc2 with design=irregular is",
 
 
 ## 3.2 Real data
-I used DTI data shown in the `mfpca.sc` document. There are 130 subjects and $D=93$ with some missings in the DTI data. The number of visits varies from one to five. The `mpca.sc2` function saves much more time than `mpca.sc` and the MISEs of two functions are the same. 
+I used DTI data shown in the `mfpca.sc` document. There are 130 subjects and $D=93$ with some missings in the DTI data. The number of visits varies from one to five. The `mfpca.sc2` function saves much more time than `mfpca.sc` and the MISEs of two functions are the same. 
 ```{r echo=TRUE, message=FALSE, warning=FALSE}
 data(DTI)
 DTI = subset(DTI, Nscans < 6)  
@@ -281,9 +283,143 @@ result2 <- round(c(as.numeric(time2), MISE2_Y),4)
 result <- rbind(result1,result2)
 colnames(result) <- c("computation time", "MISE(Y)")
 print("The result from mfpca.sc is")
-result[1,]
+print(result[1,])
 print("The result from mfpca.sc2 is")
-result[2,]
+print(result[2,])
+```
+
+## 3.3 Restructure datasets
+I used 3 cases to show that the `mfpca.sc2` function gives the same results for restructured datasets. The first one is the DTI dataset. The second is a dense dataset with unbalanced visits and the last one is a sparsee dataset with unbalanced visits.
+
+## 3.3.1 The DTI datasets
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data(DTI)
+DTI = subset(DTI, Nscans < 6)  
+id  = DTI$ID
+visit = ave(id, id, FUN=seq_along)
+Y = DTI$cca
+fit1 <-  mfpca.sc2(Y=Y, id=id, twoway=TRUE, visit=visit, 
+                   design="irregular", weight="obs")
+
+# restructure DTI
+set.seed(1)
+idx = sample(1:nrow(Y), nrow(Y))
+id_new  = id[idx]
+visit_new = visit[idx]
+Y_new = Y[idx,]
+fit2 <-  mfpca.sc2(Y=Y_new, id=id_new, visit=visit_new, 
+                   twoway=TRUE, design="irregular", weight="obs")
+
+# difference between mean functions
+diff_mu = sum(abs(fit1$mu - fit2$mu))
+diff_eta = sum(abs(fit1$eta - fit2$eta))
+# difference between eigen components
+diff_evalues = sum(abs(unlist(fit1$evalues) - unlist(fit2$evalues)))
+diff_efunctions = sum(abs(unlist(fit1$efunctions) - unlist(fit2$efunctions)))
+
+# difference between estimated observation
+diff_Yhat = sum(abs(fit1$Yhat-fit2$Yhat[order(idx),]))
+
+difference <- t(as.matrix(c(diff_mu, diff_eta, diff_evalues, 
+                            diff_efunctions, diff_Yhat)))
+colnames(difference) <- c("mu", "eta", "eigenvalues", "eigenfunctions", "Yhat")
+print("Difference between estimations")
+print(difference)
+```
+
+## 3.3.2 A dense dataset with unbalanced visits
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+set.seed(8)
+Nsub=100;J=5;D=200;K1=4;K2=4
+data <- GeneData(M=Nsub, J=J, N=D, design="regular", level=0.5, sigma=1)
+Y0 <- data$Y
+id0 <- rep(1:Nsub, each=J)
+visit0 <- rep(1:J, Nsub)
+# select rows
+set.seed(5)
+idx <- sort(sample(1:(J*Nsub), 0.8*J*Nsub))
+Y <- Y0[idx,]
+visit <- visit0[idx]
+id <- id0[idx]
+fit1 <-  mfpca.sc2(Y=Y, id=id, visit=visit, design="regular", weight="obs")
+
+# restructure the dataset
+set.seed(1)
+idx = sample(1:nrow(Y), nrow(Y))
+id_new  = id[idx]
+visit_new = visit[idx]
+Y_new = Y[idx,]
+fit2 <-  mfpca.sc2(Y=Y_new, id=id_new, visit=visit_new, 
+                   design="regular", weight="obs")
+
+# difference between mean functions
+diff_mu = sum(abs(fit1$mu - fit2$mu))
+diff_eta = sum(abs(fit1$eta - fit2$eta))
+# difference between eigen components
+diff_evalues = sum(abs(unlist(fit1$evalues) - unlist(fit2$evalues)))
+diff_efunctions = sum(unlist(lapply(1:K1, function(x){
+      min(sum(abs(fit1$efunctions[[1]][,x]-fit2$efunctions[[1]][,x])),
+          sum(abs(fit1$efunctions[[1]][,x]+fit2$efunctions[[1]][,x])))
+  + min(sum(abs(fit1$efunctions[[2]][,x]-fit2$efunctions[[2]][,x])),
+        sum(abs(fit1$efunctions[[2]][,x]+fit2$efunctions[[2]][,x])))
+    })))
+# difference between estimated observation
+diff_Yhat = sum(abs(fit1$Yhat-fit2$Yhat[order(idx),]))
+
+difference <- t(as.matrix(c(diff_mu, diff_eta, diff_evalues, 
+                            diff_efunctions, diff_Yhat)))
+colnames(difference) <- c("mu", "eta", "eigenvalues", "eigenfunctions", "Yhat")
+print("Difference between estimations")
+print(difference)
+```
+
+
+
+## 3.3.3 An irregular dataset with unbalanced visits
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+set.seed(10)
+Nsub=100;J=5;D=200;K1=4;K2=4
+data <- GeneData(M=Nsub, J=J, N=D, design="irregular", level=0.5, sigma=1)
+Y0 <- data$Y
+id0 <- rep(1:Nsub, each=J)
+visit0 <- rep(1:J, Nsub)
+# select rows
+set.seed(55)
+idx <- sort(sample(1:(J*Nsub), 0.8*J*Nsub))
+Y <- Y0[idx,]
+visit <- visit0[idx]
+id <- id0[idx]
+fit1 <-  mfpca.sc2(Y=Y, id=id, visit=visit, 
+                   design="irregular", weight="obs")
+
+# restructure the dataset
+set.seed(10)
+idx = sample(1:nrow(Y), nrow(Y))
+id_new  = id[idx]
+visit_new = visit[idx]
+Y_new = Y[idx,]
+fit2 <-  mfpca.sc2(Y=Y_new, id=id_new, visit=visit_new, 
+                   design="irregular", weight="obs")
+
+# difference between mean functions
+diff_mu = sum(abs(fit1$mu - fit2$mu))
+diff_eta = sum(abs(fit1$eta - fit2$eta))
+# difference between eigen components
+diff_evalues = sum(abs(unlist(fit1$evalues) - unlist(fit2$evalues)))
+diff_efunctions = sum(unlist(lapply(1:K1, function(x){
+      min(sum(abs(fit1$efunctions[[1]][,x]-fit2$efunctions[[1]][,x])),
+          sum(abs(fit1$efunctions[[1]][,x]+fit2$efunctions[[1]][,x])))
+  + min(sum(abs(fit1$efunctions[[2]][,x]-fit2$efunctions[[2]][,x])),
+        sum(abs(fit1$efunctions[[2]][,x]+fit2$efunctions[[2]][,x])))
+    })))
+# difference between estimated observation
+diff_Yhat = sum(abs(fit1$Yhat-fit2$Yhat[order(idx),]))
+
+difference <- t(as.matrix(c(diff_mu, diff_eta, diff_evalues, 
+                            diff_efunctions, diff_Yhat)))
+colnames(difference) <- c("mu", "eta", "eigenvalues", "eigenfunctions", "Yhat")
+print("Difference between estimations")
+print(difference)
 ```
 
 # 4 The new parameter `weight`.

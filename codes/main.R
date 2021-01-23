@@ -1,5 +1,5 @@
 
-setwd("/Applications/Books/research/paper/Di et al.(2009)/Report/codes")
+setwd("~/Users/new_mfpca/codes")
 library(refund)
 library(MASS)
 library(mgcv)
@@ -16,18 +16,15 @@ source("mfpca.sc2.R")
 data(DTI)
 DTI = subset(DTI, Nscans < 6)  
 id  = DTI$ID
+visit = ave(id, id, FUN=seq_along)
 Y = DTI$cca
 D = nrow(Y)
 
-mfpca.DTI =  mfpca.sc(Y=Y, id = id, twoway=FALSE)
-mfpca.DTI$evalues
-
-set.seed(1)
-new_idx = sample(1:D)
-Y_new = Y[new_idx,]
-id_new = id[new_idx]
-mfpca.DTI2 =  mfpca.sc(Y=Y_new, id = id_new, twoway=FALSE)
-mfpca.DTI2$evalues
+#set.seed(1)
+#new_idx = sample(1:D)
+#Y = Y[new_idx,]
+#id = id[new_idx]
+#visit = visit[new_idx]
 
 
 #### 1. mfpca.cs in refund
@@ -47,7 +44,7 @@ mpca1 <- c(time1, MISE1_Y)
 
 #### 2. the modified mfpca function: mfpca.cs2 
 s1 <- Sys.time()
-fit2 <-  mfpca.sc2(Y=Y, id=id, twoway=TRUE, design="irregular")
+fit2 <-  mfpca.sc2(Y=Y, id=id, visit=visit, twoway=TRUE, design="irregular")
 s2 <- Sys.time()
 time2 <- difftime(s2, s1, units = "mins")
 # MISE of observations
@@ -64,23 +61,29 @@ round(mpca1,4)
 round(mpca2,4)
 
 
-
 ################################
 # Simulation data
 ################################
-Nsub=100; J=3; D=500
+Nsub=100; J=5; D=200
 design="irregular"
 data <- GeneData(M=Nsub, J=J, N=D,  design=design, level=0.1, sigma=0)
 Y <- data$Y
+visit <- rep(1:J,times=Nsub)
+id <- rep(1:Nsub,each=J)
+# select rows
+#set.seed(3)
+#idx <- sample(1:(J*Nsub), 0.8*J*Nsub)
+#Y <- Y[idx,]
+#visit <- visit[idx]
+#id <- id[idx]
+
 
 # True values
 evalues_true <- data$evalues
 eigenf_true <- data$eigenfunctions
-
 # Parameters
 K1 <- 4
 K2 <- 4
-id <- rep(1:Nsub, each=J)
 twoway <- TRUE
 
 
@@ -117,7 +120,7 @@ mpca1 <- c(time1, MISE1_Y, MISE1_eigen1, MISE1_eigen2)
 ####step 2: the revised mfpca function: mfpca.cs2 
 #########################################################
 s1 <- Sys.time()
-fit2 <-  mfpca.sc2(Y=Y, id=id, twoway=twoway, design=design)
+fit2 <-  mfpca.sc2(Y=Y, id=id, visit=visit, twoway=twoway, design=design)
 s2 <- Sys.time()
 time2 <- difftime(s2, s1, units="mins")
 
