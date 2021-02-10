@@ -77,7 +77,7 @@ where $\text{cov}(\tilde{\mathbf{Y}}_i) = (\boldsymbol{\Phi}_i\boldsymbol{\Lambd
 \end{equation}
 where the dimension of $\begin{pmatrix}\boldsymbol{\Phi}^T_i\boldsymbol{\Phi}_i/\sigma^2+ \boldsymbol{\Lambda}^{-1}_1 & \boldsymbol{\Phi}_i^T\boldsymbol{\Psi}_i/\sigma^2\\ \boldsymbol{\Psi}^T_i\boldsymbol{\Phi}_i/\sigma^2 & \boldsymbol{\Psi}_i^T\boldsymbol{\Psi}_i/\sigma^2 + \boldsymbol{\Lambda}^{-1}_2\end{pmatrix} \in \mathcal{R}^{(N_1+n_iN_2)\times (N_1+n_iN_2)}$ is much smallers than $\text{cov}(\tilde{\mathbf{Y}}_i)$. Moreover, its inverse can be computed by block. Therefore, we can save huge time to compute principal scores by MME, especially when $M_i$ is large. The `mfpca.sc2` function estimates principal scores by MME. If the estimation of $\sigma^2=0$, then we have
 $$
-\begin{pmatrix}\boldsymbol{\Phi}^T_i\boldsymbol{\Phi}_i + \boldsymbol{\Lambda}^{-1}_1 & \boldsymbol{\Phi}^T_i\boldsymbol{\Psi}_i \\ \boldsymbol{\Psi}^T_i\boldsymbol{\Phi}_i  & \boldsymbol{\Psi}^T_i\boldsymbol{\Psi}_i + \boldsymbol{\Lambda}^{-1}_2\end{pmatrix}\begin{pmatrix}{\boldsymbol{\xi}}_{i}\\ {\boldsymbol{\zeta}}_{i}\end{pmatrix} = \begin{pmatrix}\boldsymbol{\Phi}^T_i \\ \boldsymbol{\Psi}^T_i \end{pmatrix}\tilde{\mathbf{Y}}_{i}\;.
+\begin{pmatrix}\boldsymbol{\Phi}^T_i\boldsymbol{\Phi}_i & \boldsymbol{\Phi}^T_i\boldsymbol{\Psi}_i \\ \boldsymbol{\Psi}^T_i\boldsymbol{\Phi}_i  & \boldsymbol{\Psi}^T_i\boldsymbol{\Psi}_i \end{pmatrix}\begin{pmatrix}{\boldsymbol{\xi}}_{i}\\ {\boldsymbol{\zeta}}_{i}\end{pmatrix} = \begin{pmatrix}\boldsymbol{\Phi}^T_i \\ \boldsymbol{\Psi}^T_i \end{pmatrix}\tilde{\mathbf{Y}}_{i}\;.
 $$
 
 # 3 Compare the computation time and estimate accuracy of `mfpca.sc` and `mfpca.sc2`.
