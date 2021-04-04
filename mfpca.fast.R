@@ -15,7 +15,7 @@
 #' @import MASS
 #' @import simex
 
-fmfpca <- function(Y, id, group, argvals = NULL, pve = 0.99, npc = NULL){
+mfpca.fast <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = NULL, silent = TRUE){
   ## required packages
   library(refund)
   library(splines)
@@ -26,7 +26,7 @@ fmfpca <- function(Y, id, group, argvals = NULL, pve = 0.99, npc = NULL){
   ##################################################################################
   ## Organize the input
   ##################################################################################
-  print("Step 0: Organize the input -- may take several minutes")
+  if(silent == FALSE) print("Step 0: Organize the input -- may take some time")
   
   stopifnot((!is.null(Y) & !is.null(id)))
   stopifnot(is.matrix(Y))
@@ -35,7 +35,7 @@ fmfpca <- function(Y, id, group, argvals = NULL, pve = 0.99, npc = NULL){
   if (!is.null(group)){ 
     group <- as.factor(group)
   }else{ ## if group is not provided, assume the group id are 1,2,... for each subject
-    group <- ave(id, id, FUN=seq_along)
+    group <- as.factor(ave(id, id, FUN=seq_along))
   }
   id <- as.factor(id) ## convert id into a factor
   
@@ -52,7 +52,7 @@ fmfpca <- function(Y, id, group, argvals = NULL, pve = 0.99, npc = NULL){
   J <- length(levels(df$group)) ## number of groups
   S <- ncol(df$Y) ## number of observations along the domain
   nknots <- min(100, round(0.1*S)) ## number of knots used for general smoothing
-  nGroups <- data.frame(table(df$id))  ## calculate number of group levels for each subject
+  nGroups <- data.frame(table(df$id))  ## calculate number of groups for each subject
   colnames(nGroups) = c("id", "numGroups")
   ID = sort(unique(df$id)) ## id of each subject
   I <- length(ID) ## number of subjects
@@ -63,7 +63,7 @@ fmfpca <- function(Y, id, group, argvals = NULL, pve = 0.99, npc = NULL){
   ##################################################################################
   ## Estimate population mean function (mu)
   ##################################################################################
-  print("Step 1: Estimate population mean function (mu)")
+  if(silent == FALSE) print("Step 1: Estimate population mean function (mu)")
   
   meanY <- colMeans(df$Y, na.rm = TRUE)
   mu <- smooth.spline(argvals, meanY, all.knots = FALSE)$y
@@ -73,7 +73,7 @@ fmfpca <- function(Y, id, group, argvals = NULL, pve = 0.99, npc = NULL){
   ##################################################################################
   ## Estimate group-specific mean function (eta)
   ##################################################################################
-  print("Step 2: Estimate group-specific mean function (eta)")
+  if(silent == FALSE) print("Step 2: Estimate group-specific mean function (eta)")
   
   mueta = matrix(NA, S, J) 
   eta = matrix(NA, S, J) ## matrix to store visit-specific means
@@ -97,58 +97,80 @@ fmfpca <- function(Y, id, group, argvals = NULL, pve = 0.99, npc = NULL){
   ##################################################################################
   ## Estimate Kt, the total covariance
   ##################################################################################
-  print("Step 3: Estimate the total covariance matrix (Kt)")
+  if(silent == FALSE) print("Step 3: Estimate the total covariance matrix (Kt)")
   
-  # ptm <- proc.time()
+  ptm <- proc.time()
   cov.sum <- crossprod(unclass(df$Ytilde))
   Gt <- cov.sum/nrow(df$Ytilde) ## estimate Gt using MoM estimator
-  # proc.time() - ptm ## 106 s
   
   diag_Gt <- diag(Gt) 
   diag(Gt) <- NA
   npc.0 <- fbps.cov(Gt, diag.remove=T, knots=nknots)$cov
   Kt <- (npc.0 + t(npc.0))/2 ## the smoothed (total) covariance matrix
+  proc.time() - ptm ## 106 s
   
   rm(cov.sum, npc.0, Gt)
   
-  
   ##################################################################################
-  ## Estimate Kb, the between covariance
-  ### Use the possible pairs of same-subject visits to calculate the between covariance function
+  ## Estimate Kb (the between covariance) and Kw (the within covariance)
   ##################################################################################
-  print("Step 4: Estimate the between subject covariance matrix (Kb) -- may take several minutes")
+  if(silent == FALSE) print("Step 4: Estimate the between (Kb) and within (Kw) subject covariance matrix")
   
-  # ptm <- proc.time()
-  cov.sum <- matrix(0, S, S)
-  ids.Kb <- nGroups[nGroups$numGroups > 1, c("id")] ## subject ids with at least 2 visits
-  for (m in 1:I) {
-    if (ID[m] %in% ids.Kb) {
-      mat_m <- matrix(df$Ytilde[df$id==ID[m],], ncol=S)
-      cov.sum <- cov.sum + tcrossprod(colSums(mat_m)) - crossprod(mat_m)
-    }
-  }
-  # proc.time() - ptm ## 682 s
+  ## first part of formula (Shou et al.2015): t(Y) %*% D %*% Y
+  Ji <- table(df$id)
+  diagD <- rep(Ji, Ji)
+  m1 <- crossprod(unclass(df$Ytilde)*sqrt(diagD))
   
-  Gb <- cov.sum/sum(nGroups[,2]*(nGroups[,2]-1)) ## between covariance
-  npc.0b <- fbps.cov(Gb, diag.remove=T, knots=nknots)$cov
-  Kb <- (npc.0b + t(npc.0b))/2 ## smoothed (between) covariance matrix
+  ## second part of formula: t(E %*% Y) %*% E %*% Y
+  inx_row_ls <- split(1:nrow(df$Ytilde), f=factor(df$id, levels=unique(df$id)))
+  Ytilde_subj <- t(vapply(inx_row_ls, function(x) colSums(df$Ytilde[x,,drop=FALSE],na.rm=TRUE), numeric(S)))
+  m2 <- crossprod(Ytilde_subj)
   
-  rm(cov.sum, npc.0b, ids.Kb, mat_m, m, Gb)
+  Gw <- (m1 - m2) / (sum(diagD) - nrow(df$Ytilde)) ## estimate Gw using MoM estimator
   
+  npc.0w <- fbps.cov(Gw, diag.remove=T, knots=nknots)$cov
+  Kw <- (npc.0w + t(npc.0w))/2 ## the smoothed within covariance matrix
+  Kb <- (Kt - Kw + t(Kt - Kw))/2 ## the smoothed between covariance matrix
   
-  ###########################################################################################
-  ## Estimate Kw, the within covariance
-  ############################################################################################
-  print("Step 5: Estimate the within subject covariance matrix (Kw)")
+  rm(Ji, diagD, m1, m2, inx_row_ls, Ytilde_subj, Gw, npc.0w)
   
-  Kw <- (Kt - Kb + t(Kt - Kb))/2 ## to ensure symmetric
-  
+  # ##################################################################################
+  # ## Estimate Kb, the between covariance
+  # ### Use the possible pairs of same-subject visits to calculate the between covariance function
+  # ##################################################################################
+  # if(silent == FALSE) print("Step 4: Estimate the between subject covariance matrix (Kb) -- may take several minutes")
+  # 
+  # # ptm <- proc.time()
+  # cov.sum <- matrix(0, S, S)
+  # ids.Kb <- nGroups[nGroups$numGroups > 1, c("id")] ## subject ids with at least 2 visits
+  # for (m in 1:I) {
+  #   if (ID[m] %in% ids.Kb) {
+  #     mat_m <- matrix(df$Ytilde[df$id==ID[m],], ncol=S)
+  #     cov.sum <- cov.sum + tcrossprod(colSums(mat_m)) - crossprod(mat_m)
+  #   }
+  # }
+  # # proc.time() - ptm ## 682 s
+  # 
+  # Gb <- cov.sum/sum(nGroups[,2]*(nGroups[,2]-1)) ## between covariance
+  # npc.0b <- fbps.cov(Gb, diag.remove=T, knots=nknots)$cov
+  # Kb <- (npc.0b + t(npc.0b))/2 ## smoothed (between) covariance matrix
+  # 
+  # rm(cov.sum, npc.0b, ids.Kb, mat_m, m, Gb)
+  # 
+  # 
+  # ###########################################################################################
+  # ## Estimate Kw, the within covariance
+  # ############################################################################################
+  # if(silent == FALSE) print("Step 5: Estimate the within subject covariance matrix (Kw)")
+  # 
+  # Kw <- (Kt - Kb + t(Kt - Kb))/2 ## to ensure symmetric
+  # 
   
   ###########################################################################################
   ## Estimate eigen values and eigen functions at two levels by calling the 
   ## eigen function (in R "base" package) on discretized covariance matrices.
   ###########################################################################################
-  print("Step 6: Estimate eigen values and eigen functions at two levels")
+  if(silent == FALSE) print("Step 6: Estimate eigen values and eigen functions at two levels")
   
   w <- quadWeights(argvals, method = "trapezoidal")
   Wsqrt <- diag(sqrt(w))
@@ -170,7 +192,7 @@ fmfpca <- function(Y, id, group, argvals = NULL, pve = 0.99, npc = NULL){
   ###################################################################
   # Estimate the measurement error variance (sigma^2)
   ###################################################################
-  print("Step 7: Estimate the measurement error variance (sigma^2)")
+  if(silent == FALSE) print("Step 7: Estimate the measurement error variance (sigma^2)")
   
   cov.hat <- lapply(c("level1", "level2"), 
                     function(x) efunctions[[x]] %*% diag(evalues[[x]], npc[[x]], npc[[x]]) %*% t(efunctions[[x]]))
@@ -187,7 +209,7 @@ fmfpca <- function(Y, id, group, argvals = NULL, pve = 0.99, npc = NULL){
   ###################################################################
   # Estimate the principal component scores
   ###################################################################
-  print("Step 8: Estimate principal component scores -- may take several minutes")
+  if(silent == FALSE) print("Step 8: Estimate principal component scores -- may take some time")
   
   ## estimated subject-visit and subject-specific underlying smooth curves
   Xhat <- Xhat.subject <- matrix(0, nrow(df$Y), S) 
@@ -196,7 +218,7 @@ fmfpca <- function(Y, id, group, argvals = NULL, pve = 0.99, npc = NULL){
   score1 <- matrix(0, I, npc[[1]]) ## matrices storing scores of two levels
   score2 <- matrix(0, nrow(df$Y), npc[[2]])
   
-  unGroups <- unique(nGroups$numGroups) ## unique number of group levels
+  unGroups <- unique(nGroups$numGroups) ## unique number of groups
   if(length(unGroups) < I){
     # ptm <- proc.time()
     for(j in 1:length(unGroups)){
@@ -296,7 +318,7 @@ fmfpca <- function(Y, id, group, argvals = NULL, pve = 0.99, npc = NULL){
   ###################################################################
   # Organize the results
   ###################################################################
-  print("Step 9: Organize the results")
+  if(silent == FALSE) print("Step 9: Organize the results")
   
   res <- list(Xhat = Xhat, Xhat.subject = Xhat.subject, mu = mu, eta = eta, scores = scores, 
               efunctions = efunctions, evalues = evalues, npc = npc, sigma2 = sigma2, Y = df$Y)
