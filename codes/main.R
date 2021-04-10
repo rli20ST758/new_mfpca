@@ -66,16 +66,16 @@ round(mpca2,4)
 ################################
 Nsub=100; J=5; D=200
 design="irregular"
-data <- GeneData(M=Nsub, J=J, N=D,  design=design, level=0.1, sigma=0)
+data <- GeneData(M=Nsub, J=J, N=D,  design=design, level=0.95, sigma=0)
 Y <- data$Y
 visit <- rep(1:J,times=Nsub)
 id <- rep(1:Nsub,each=J)
 # select rows
 #set.seed(3)
-#idx <- sample(1:(J*Nsub), 0.8*J*Nsub)
-#Y <- Y[idx,]
-#visit <- visit[idx]
-#id <- id[idx]
+# idx <- sample(1:(J*Nsub), 0.8*J*Nsub)
+# Y <- Y[idx,]
+# visit <- visit[idx]
+# id <- id[idx]
 
 
 # True values
