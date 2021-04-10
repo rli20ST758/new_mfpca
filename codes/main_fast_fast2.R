@@ -16,7 +16,7 @@ source("mfpca.fast2.R")
 
 
 set.seed(3)
-Nsub=100; J=3; D=5000
+Nsub=100; J=3; D=2000
 design="irregular"
 data <- GeneData(M=Nsub, J=J, N=D,  design=design, level=0.95, sigma=0)
 Y <- data$Y
