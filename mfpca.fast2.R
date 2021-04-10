@@ -219,20 +219,34 @@ mfpca.fast2 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   if(silent == FALSE) print("Step 6: Estimate eigen values and eigen functions at two levels")
   
   w <- quadWeights(argvals, method = "trapezoidal")
-  Wsqrt <- diag(sqrt(w))
   Winvsqrt <- diag(1/(sqrt(w)))
+  npc.0wb <- list(level1 = Kb, level2 = Kw)  
+  W0 <- (sqrt(w)) %*% t(sqrt(w))
+  V <- lapply(npc.0wb, function(x) W0*x)
   
-  npc.0wb <- list(level1 = Kb, level2 = Kw)   
-  V <- lapply(npc.0wb, function(x) Wsqrt %*% x %*% Wsqrt)
-  evalues <- lapply(V, function(x) eigen(x, symmetric = TRUE, only.values = TRUE)$values)
-  evalues <- lapply(evalues, function(x) replace(x, which(x <= 0), 0))
-  npc <- lapply(evalues, function(x) ifelse(is.null(npc), min(which(cumsum(x)/sum(x) > pve)), npc ))
+  ecomp <- lapply(V, function(x) eigen(x, symmetric = TRUE))
+  evalues <- lapply(ecomp, function(x) replace(x$values, which(x$values <= 0), 0))
+  npc <- lapply(evalues, function(x) ifelse(is.null(npc), min(which(cumsum(x)/sum(x) > pve)), npc))
   efunctions <- lapply(names(V), function(x) 
-    matrix(Winvsqrt%*%eigen(V[[x]], symmetric=TRUE)$vectors[,seq(len=npc[[x]])], nrow=S, ncol=npc[[x]]))
-  evalues <- lapply(names(V), function(x) eigen(V[[x]], symmetric=TRUE, only.values=TRUE)$values[1:npc[[x]]])
+    matrix(Winvsqrt%*%(ecomp[[x]])$vectors[,seq(len=npc[[x]])], nrow=S, ncol=npc[[x]]))
+  evalues <- lapply(names(V), function(x) (evalues[[x]])[1:npc[[x]]])
   names(efunctions) <- names(evalues) <- names(npc) <- c("level1", "level2")
+  rm(w, Winvsqrt, npc.0wb, V, W0, ecomp)
   
-  rm(w, Wsqrt, Winvsqrt, npc.0wb, V)
+  
+  # w <- quadWeights(argvals, method = "trapezoidal")
+  # Winvsqrt <- diag(1/(sqrt(w)))
+  # npc.0wb <- list(level1 = Kb, level2 = Kw)  
+  # Wsqrt <- diag(sqrt(w))
+  # V <- lapply(npc.0wb, function(x) Wsqrt %*% x %*% Wsqrt)
+  # evalues <- lapply(V, function(x) eigen(x, symmetric = TRUE, only.values = TRUE)$values)
+  # evalues <- lapply(evalues, function(x) replace(x, which(x <= 0), 0))
+  # npc <- lapply(evalues, function(x) ifelse(is.null(npc), min(which(cumsum(x)/sum(x) > pve)), npc ))
+  # efunctions <- lapply(names(V), function(x) 
+  #   matrix(Winvsqrt%*%eigen(V[[x]], symmetric=TRUE)$vectors[,seq(len=npc[[x]])], nrow=S, ncol=npc[[x]]))
+  # evalues <- lapply(names(V), function(x) eigen(V[[x]], symmetric=TRUE, only.values=TRUE)$values[1:npc[[x]]])
+  # names(efunctions) <- names(evalues) <- names(npc) <- c("level1", "level2")
+  # rm(w, Wsqrt, Winvsqrt, npc.0wb, V)
   
   
   ###################################################################
