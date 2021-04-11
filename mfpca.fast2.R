@@ -27,7 +27,7 @@ mfpca.fast2 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   library(MASS)
   library(simex)
   library(Matrix)
-  #source("./code/backup.R")
+  source("./code/backup.R")
   
   ##################################################################################
   ## Organize the input
@@ -66,7 +66,9 @@ mfpca.fast2 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   if(silent == FALSE) print("Step 1: Estimate population mean function (mu)")
   
   meanY <- colMeans(df$Y, na.rm = TRUE)
-  mu <- smooth.spline(argvals, meanY, all.knots = FALSE)$y
+  fit_mu <- gam(meanY ~ s(argvals))
+  mu <- as.vector(predict(fit_mu, newdata = data.frame(argvals = argvals)))
+  # mu <- smooth.spline(argvals, meanY, all.knots = FALSE)$y
   rm(meanY)
   
   
@@ -86,7 +88,9 @@ mfpca.fast2 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
     }else{
       meanYj <- df$Y[ind_j,]
     }
-    mueta[,j] <- smooth.spline(argvals, meanYj, all.knots = FALSE)$y
+    fit_mueta <- gam(meanYj ~ s(argvals))
+    mueta[,j] <- predict(fit_mueta, newdata = data.frame(argvals = argvals))
+    # mueta[,j] <- smooth.spline(argvals, meanYj, all.knots = FALSE)$y
     eta[,j] <- mueta[,j] - mu
     Ytilde[ind_j,] <- df$Y[ind_j,] - matrix(mueta[,j], nrow = length(ind_j), ncol = S, byrow = TRUE)
   }
