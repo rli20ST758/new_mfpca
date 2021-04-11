@@ -219,19 +219,19 @@ mfpca.fast2 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   if(silent == FALSE) print("Step 6: Estimate eigen values and eigen functions at two levels")
   
   w <- quadWeights(argvals, method = "trapezoidal")
-  Winvsqrt <- diag(1/(sqrt(w)))
+  Wsqrt <- sqrt(w)
   npc.0wb <- list(level1 = Kb, level2 = Kw)  
-  W0 <- (sqrt(w)) %*% t(sqrt(w))
+  W0 <- (Wsqrt) %*% t(Wsqrt)
   V <- lapply(npc.0wb, function(x) W0*x)
   
   ecomp <- lapply(V, function(x) eigen(x, symmetric = TRUE))
   evalues <- lapply(ecomp, function(x) replace(x$values, which(x$values <= 0), 0))
   npc <- lapply(evalues, function(x) ifelse(is.null(npc), min(which(cumsum(x)/sum(x) > pve)), npc))
   efunctions <- lapply(names(V), function(x) 
-    matrix(Winvsqrt%*%(ecomp[[x]])$vectors[,seq(len=npc[[x]])], nrow=S, ncol=npc[[x]]))
+    matrix((1/Wsqrt)*(ecomp[[x]])$vectors[,seq(len=npc[[x]])], nrow=S, ncol=npc[[x]]))
   evalues <- lapply(names(V), function(x) (evalues[[x]])[1:npc[[x]]])
   names(efunctions) <- names(evalues) <- names(npc) <- c("level1", "level2")
-  rm(w, Winvsqrt, npc.0wb, V, W0, ecomp)
+  rm(w, Wsqrt, npc.0wb, V, W0, ecomp)
   
   
   # w <- quadWeights(argvals, method = "trapezoidal")
