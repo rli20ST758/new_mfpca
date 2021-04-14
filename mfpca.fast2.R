@@ -90,7 +90,7 @@ mfpca.fast2 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   
   
   ##################################################################################
-  ## FACE preparation
+  ## FACE preparation: please see Xiao et al. (2016) for details
   ##################################################################################
   
   ## Specify the knots of B-spline basis
@@ -105,15 +105,15 @@ mfpca.fast2 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   if(length(knots) > 1) K.p <- length(knots) - 2*p - 1
   if(K.p >= L) cat("Too many knots!\n")
   stopifnot(K.p < L)
-  c.p <- K.p + p
+  c.p <- K.p + p #the number of B-spline basis functions
   
   ## Precalculation for smoothing
   List <- pspline.setting(argvals, knots, p, m)
-  B <- List$B
+  B <- List$B #B is the J ×c design matrix
   Bt <- t(as.matrix(B))
-  s <- List$s
-  Sigi.sqrt <- List$Sigi.sqrt
-  U <- List$U
+  Sigi.sqrt <- List$Sigi.sqrt #(t(B)B)^(-1/2)
+  s <- List$s #eigenvalues of Sigi_sqrt%*%(P%*%Sigi_sqrt)
+  U <- List$U #eigenvectors of Sigi_sqrt%*%(P%*%Sigi_sqrt)
   A0 <- Sigi.sqrt %*% U
   
   
@@ -122,7 +122,7 @@ mfpca.fast2 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   ##################################################################################
   if(silent == FALSE) print("Estimate the total covariance matrix")
   
-  smooth.Gt <- face.Cov(Y = unclass(df$Ytilde), argvals, A0, Bt, s, c.p, pve, npc, Cov=T)
+  smooth.Gt <- face.Cov(Y = unclass(df$Ytilde), argvals, A0, Bt, s, c.p, Cov=T)
   Kt <- (t(smooth.Gt$Ktilde) + smooth.Gt$Ktilde) / 2
   
   ## impute missing data of Y using FACE approach
@@ -146,7 +146,7 @@ mfpca.fast2 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   HY <-  do.call("rbind", lapply(1:I, function(x) {
     weight * t(t(sqrt(Ji[x])*df$Ytilde[inx_row_ls[[x]],,drop=FALSE]) - Ysubm[x,]/sqrt(Ji[x]))
     }))
-  smooth.Gw <- face.Cov(Y = HY, argvals, A0, Bt, s, c.p, pve, npc, Cov=T)
+  smooth.Gw <- face.Cov(Y = HY, argvals, A0, Bt, s, c.p, Cov=T)
   
   Kw <- (t(smooth.Gw$Ktilde) + smooth.Gw$Ktilde) / 2
   Kb <- Kt - Kw  ## the smoothed between covariance matrix
