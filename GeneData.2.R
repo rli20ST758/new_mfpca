@@ -18,20 +18,26 @@ GeneData <- function(I = 100, J = 3, L = 100, design = "regular", level = 0.1,
   lambda2 <- 0.5^(0:(K2-1))
   tlength <- 1
   t <- seq(0, tlength, length = L)
+  tt <- t/tlength
   
   # Eigenfunctions
   f1 <- matrix(0, nrow=K1, ncol=L)
   for ( i in 1:(K1/2) ) {
-    f1[2*i-1,] <- sqrt(2/tlength)*sin(i*t*2*pi/tlength)
-    f1[2*i,] <- sqrt(2/tlength)*cos(i*t*2*pi*tlength)
+    f1[2*i-1,] <- sqrt(2/tlength)*sin(i*tt*2*pi)
+    f1[2*i,] <- sqrt(2/tlength)*cos(i*tt*2*pi)
   }
-  tt <- t/tlength
+
   f2 <- matrix(0, nrow=K2, ncol=L)
   f2[1,] <- rep(1, L)*sqrt(1/tlength)
   f2[2,] <- sqrt(3/tlength) * (2*tt - 1)
   f2[3,] <- sqrt(5/tlength) * (6*tt^2 - 6 * tt + 1)
   f2[4,] <- sqrt(7/tlength) * (20*tt^3 - 30*tt^2 + 12 * tt -1)
-  
+
+  # f2 <- matrix(0, nrow=K2, ncol=L)
+  # f2[1,] <- sqrt(2/tlength)*sin(6*tt*pi)
+  # f2[2,] <- sqrt(2/tlength)*cos(6*tt*pi)
+  # f2[3,] <- sqrt(2/tlength)*sin(8*tt*pi)
+  # f2[4,] <- sqrt(2/tlength)*cos(8*tt*pi)
   
   # Generate scores
   ## generate number of visits for each subject from poisson distribution
