@@ -6,18 +6,20 @@ library(Matrix)
 library(mgcv)
 library(simex)
 library(splines)
+library(rARPACK)
 
 source("codes/GeneData.R")
 source("codes/fbps.cov.R")
 source("codes/backup.R")
 source("mfpca.fast.R")
 source("mfpca.fast2.R")
+source("mfpca.fast3.R")
 
 
 
 set.seed(3)
-Nsub=100; J=3; D=500
-design="irregular"
+Nsub=100; J=5; D=5000
+design="regular"
 data <- GeneData(M=Nsub, J=J, N=D,  design=design, level=0.95, sigma=0)
 Y <- data$Y
 visit <- rep(1:J,times=Nsub)
@@ -95,6 +97,37 @@ mpca2 <- c(time2, MISE2_Y, MISE2_eigen1, MISE2_eigen2)
 
 
 #########################################################
+####step 3:  mfpca.fast3
+#########################################################
+s1 <- Sys.time()
+fit3 <-   mfpca.fast3(Y=Y, id=id)
+s2 <- Sys.time()
+time3 <- difftime(s2, s1, units="mins")
+
+
+# MISE of observations
+diff3 = 0
+num = 0
+for(i in 1:nrow(Y)){
+  idx = which(!is.na(Y[i, ]))
+  num = num + length(idx)
+  diff3 = diff3 + sum(abs(fit2$Yhat[i,idx]-Y[i,idx])^2)
+}
+MISE3_Y <- diff3/num
+
+# MISE of eigenfucntions
+MISE3_eigen1 <- sum(unlist(lapply(1:K1, function(x){
+  min(sum((eigenf_true[[1]][,x]-fit3$efunctions[[1]][,x])^2),sum((eigenf_true[[1]][,x]+fit3$efunctions[[1]][,x])^2))
+})))/(K1*D)
+MISE3_eigen2 <- sum(unlist(lapply(1:K2, function(x){
+  min(sum((eigenf_true[[2]][,x]-fit3$efunctions[[2]][,x])^2),sum((eigenf_true[[2]][,x]+fit3$efunctions[[2]][,x])^2))
+})))/(K2*D)
+mpca3 <- c(time3, MISE3_Y, MISE3_eigen1, MISE3_eigen2)
+
+
+
+
+#########################################################
 ####step 3: mfpca.cs in refund
 #########################################################
 # s1 <- Sys.time()
@@ -141,7 +174,7 @@ mpca <- c(MISE_eigen1, MISE_eigen2)
 
 round(mpca1,4)
 round(mpca2,4)
-#round(mpca3,4)
+round(mpca3,4)
 round(mpca,4)
 
 

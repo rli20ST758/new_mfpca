@@ -18,6 +18,7 @@
 #' @import MASS
 #' @import simex
 #' @import Matrix
+#' @import rARPACK
 
 mfpca.fast2 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = NULL, 
                         p = 3, m = 2, knots = 35, silent = TRUE){
@@ -27,7 +28,8 @@ mfpca.fast2 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   library(MASS)
   library(simex)
   library(Matrix)
-  source("./code/backup.R")
+  library(rARPACK)
+  #source("./code/backup.R")
   
   ##################################################################################
   ## Organize the input
@@ -124,12 +126,13 @@ mfpca.fast2 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   
   
   ##################################################################################
-  ## Estimate Kt, the total covariance
+  ## Estimate principal components of Kt (the between covariance)
   ##################################################################################
   if(silent == FALSE) print("Step 3: Estimate the total covariance matrix (Kt)")
   
-  smooth.Gt = smooth_Gt(Y=unclass(df$Ytilde), argvals, A0, Bt, s, c.p, pve, npc)
-  Kt = smooth.Gt$Kt
+  smooth.Gt = face.Cov(Y=unclass(df$Ytilde), argvals, A0, Bt, s, c.p, pve, npc, Cov=T)
+  Kt = smooth.Gt$Ktilde
+  Kt = (t(Kt) + Kt)/2
   ## impute missing data of Y using FACE approach
   if(!is.null(is.na(df$Ytilde))){
     df$Ytilde[which(is.na(df$Ytilde))] <- smooth.Gt$Yhat[which(is.na(df$Ytilde))]
@@ -150,28 +153,51 @@ mfpca.fast2 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
 
 
   ##################################################################################
-  ## Estimate Kb (the between covariance) and Kw (the within covariance)
+  ## Estimate principal components of Kw (the within covariance)
   ##################################################################################
   if(silent == FALSE) print("Step 4: Estimate the between (Kb) and within (Kw) subject covariance matrix")
-  
-  ## first part of formula (Shou et al.2015): t(Y) %*% D %*% Y
+
   Ji <- as.numeric(table(df$id))
   diagD <- rep(Ji, Ji)
-  YD <- unclass(df$Ytilde)*sqrt(diagD)
-  smooth.Gw1 <- smooth_Cov(Y=YD, A0, Bt, s, c.p, pve, npc)
-  Kw1 <- nrow(YD) * smooth.Gw1$Ktilde
-  
-  ## second part of formula: t(E %*% Y) %*% E %*% Y
   inx_row_ls <- split(1:nrow(df$Ytilde), f=factor(df$id, levels=unique(df$id)))
-  YE <- t(vapply(inx_row_ls, function(x) colSums(df$Ytilde[x,,drop=FALSE],na.rm=TRUE), numeric(S)))
-  smooth.Gw2 <- smooth_Cov(Y=YE, A0, Bt, s, c.p, pve, npc)
-  Kw2 <- nrow(YE) * smooth.Gw2$Ktilde
+  weight <- sqrt(nrow(df$Ytilde)/(sum(diagD) - nrow(df$Ytilde)))
+  Ysubm <- t(vapply(inx_row_ls, function(x) colSums(df$Ytilde[x,,drop=FALSE],na.rm=TRUE), numeric(S))) # The visit mean per subject 
+  YH <-  do.call("rbind",lapply(1:I, function(x) {
+    weight * t(t(sqrt(Ji[x])*df$Ytilde[inx_row_ls[[x]],]) - Ysubm[x,]/sqrt(Ji[x]))
+    }))
+  smooth.Gw <- face.Cov(Y=YH, argvals, A0, Bt, s, c.p, pve, npc, Cov=T)
   
-  Kw <- (Kw1 - Kw2) / (sum(diagD) - nrow(df$Ytilde))
-  Kb <- (Kt - Kw + t(Kt - Kw))/2 ## the smoothed between covariance matrix
-  rm(Ji, diagD, Kw1, Kw2, smooth.Gw1, smooth.Gw2, YD, YE, inx_row_ls, B, Bt, s, Sigi.sqrt, U, A0)
+  Kw <- smooth.Gw$Ktilde
+  Kw <- (t(Kw) + Kw)/2
+  Kb <- Kt - Kw  ## the smoothed between covariance matrix
+  rm(Ji, diagD, inx_row_ls, weight, Ysubm, YH, smooth.Gw, B, Bt, s, Sigi.sqrt, U, A0)
+  
+  # H <- lapply(1:I, function(x){ weight*(sqrt(Ji[x])*diag(Ji[x]) - 1/sqrt(Ji[x])) })
+  # YH2 <-  do.call("rbind",lapply(1:I, function(x) {
+  #   H[[x]]%*%df$Ytilde[inx_row_ls[[x]],]
+  #   }))
 
   
+  ## first part of formula (Shou et al.2015): t(Y) %*% D %*% Y
+  # Ji <- as.numeric(table(df$id))
+  # diagD <- rep(Ji, Ji)
+  # YD <- unclass(df$Ytilde)*sqrt(diagD)
+  # smooth.Gw1 <- smooth_Cov2(Y=YD, A0, Bt, s, c.p, pve, npc)
+  # Kw1 <- nrow(YD) * smooth.Gw1$Ktilde
+  # 
+  # ## second part of formula: t(E %*% Y) %*% E %*% Y
+  # inx_row_ls <- split(1:nrow(df$Ytilde), f=factor(df$id, levels=unique(df$id)))
+  # YE <- t(vapply(inx_row_ls, function(x) colSums(df$Ytilde[x,,drop=FALSE],na.rm=TRUE), numeric(S)))
+  # smooth.Gw2 <- smooth_Cov2(Y=YE, A0, Bt, s, c.p, pve, npc)
+  # Kw2 <- nrow(YE) * smooth.Gw2$Ktilde
+  # 
+  # Kw <- (Kw1 - Kw2) / (sum(diagD) - nrow(df$Ytilde))
+  # Kw <- (t(Kw) + Kw)/2
+  # Kb <- Kt - Kw  ## the smoothed between covariance matrix
+  # rm(Ji, diagD, Kw1, Kw2, smooth.Gw1, smooth.Gw2, YD, YE, inx_row_ls, B, Bt, s, Sigi.sqrt, U, A0)
+
+  
+  #sqrt(nrow(df$Ytilde)/(sum(diagD) - nrow(df$Ytilde)))
   # Ji <- as.numeric(table(df$id))
   # diagD <- rep(Ji, Ji)
   # m1 <- crossprod(unclass(df$Ytilde)*sqrt(diagD))
@@ -228,14 +254,15 @@ mfpca.fast2 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   W0 <- (Wsqrt) %*% t(Wsqrt)
   V <- lapply(npc.0wb, function(x) W0*x)
   
-  ecomp <- lapply(V, function(x) eigen(x, symmetric = TRUE))
+  ecomp <- lapply(V, function(x) eigen(x, only.values = TRUE, symmetric = TRUE)) #get npc
   evalues <- lapply(ecomp, function(x) replace(x$values, which(x$values <= 0), 0))
   npc <- lapply(evalues, function(x) ifelse(is.null(npc), min(which(cumsum(x)/sum(x) > pve)), npc))
-  efunctions <- lapply(names(V), function(x) 
-    matrix((1/Wsqrt)*(ecomp[[x]])$vectors[,seq(len=npc[[x]])], nrow=S, ncol=npc[[x]]))
+  ecomp <- lapply(names(V), function(x) eigs_sym(V[[x]], npc[[x]], which="LM")) #get the first npc eigenvectors
+  efunctions <- lapply(1:2, function(x) 
+    matrix((1/Wsqrt)*(ecomp[[x]])$vectors, nrow=S, ncol=npc[[x]]))
   evalues <- lapply(names(V), function(x) (evalues[[x]])[1:npc[[x]]])
   names(efunctions) <- names(evalues) <- names(npc) <- c("level1", "level2")
-  rm(w, Wsqrt, npc.0wb, V, W0, ecomp)
+  rm(w, Wsqrt, npc.0wb, V, ecomp, W0)
   
   
   # w <- quadWeights(argvals, method = "trapezoidal")
@@ -258,12 +285,11 @@ mfpca.fast2 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   ###################################################################
   if(silent == FALSE) print("Step 7: Estimate the measurement error variance (sigma^2)")
   
-  cov.hat <- lapply(c("level1", "level2"), 
-                    function(x) efunctions[[x]] %*% diag(evalues[[x]], npc[[x]], npc[[x]]) %*% t(efunctions[[x]]))
+  cov.hat <- lapply(c("level1", "level2"), function(x) colSums(t(efunctions[[x]]^2)*evalues[[x]]))
   T.len <- argvals[S] - argvals[1]
   T1.min <- min(which(argvals >= argvals[1] + 0.25 * T.len))
   T1.max <- max(which(argvals <= argvals[S] - 0.25 * T.len))
-  DIAG <- (diag_Gt - diag(cov.hat[[1]])-diag(cov.hat[[2]]))[T1.min:T1.max]
+  DIAG <- (diag_Gt - cov.hat[[1]] - cov.hat[[2]])[T1.min:T1.max]
   w2 <- quadWeights(argvals[T1.min:T1.max], method = "trapezoidal")
   sigma2 <- max(weighted.mean(DIAG, w = w2, na.rm = TRUE), 0) ## estimated measurement error variance
   

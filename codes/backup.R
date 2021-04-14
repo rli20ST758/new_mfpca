@@ -1,8 +1,8 @@
 
 
-smooth_Gt <- function(Y, argvals, A0, Bt, s, c.p, pve, npc, lambda=NULL, alpha=1, 
+face.Cov <- function(Y, argvals, A0, Bt, s, c.p, pve, npc, Cov=FALSE, lambda=NULL, alpha=1, 
                       search.grid=TRUE, search.length=100, lower=-20, upper=20){
-
+  
   ######## precalculation for missing data ########
   imputation <- FALSE
   Niter.miss <- 1
@@ -124,87 +124,16 @@ smooth_Gt <- function(Y, argvals, A0, Bt, s, c.p, pve, npc, lambda=NULL, alpha=1
   
   
   A.N <- A[,1:N]
-  evalues <- S * Sigma[1:N]
-  tAsA = as.matrix(t(A.N)%*%(t(A0)%*%Bt))
-  Kt = t(tAsA) %*%  matrix.multiply(tAsA,evalues,2)
+  evalues <- S*Sigma[1:N]
+  tAsA <- as.matrix(t(A.N)%*%(t(A0)%*%Bt))
+  Ktilde <- NULL
+  if(Cov) {
+    Ktilde <- t(tAsA) %*%  matrix.multiply(tAsA,evalues,2)
+  }
   
-  return(list(Yhat=Y, Kt=Kt, evalues=evalues, efunctions=t(tAsA)))
+  return(list(Yhat=Y, Ktilde=Ktilde, evalues=evalues, evectors=t(tAsA)))
 }
 
-
-
-
-smooth_Cov <- function(Y, A0, Bt, s, c.p, pve, npc, lambda=NULL, alpha=1, search.grid=TRUE, 
-                     search.length=100, lower=-20, upper=20){
-  
-  S <- ncol(Y)
-  n <- nrow(Y)
-  
-  Ytilde <- as.matrix(t(A0)%*%as.matrix(Bt%*%t(Y)))
-  C_diag <- rowSums(Ytilde^2)
-  Y_square <- sum(Y^2)
-  Ytilde_square <- sum(Ytilde^2)
-  
-  face_gcv <- function(x) {
-    lambda <- exp(x)
-    lambda_s <- (lambda*s)^2/(1 + lambda*s)^2
-    gcv <- sum(C_diag*lambda_s) - Ytilde_square + Y_square
-    trace <- sum(1/(1+lambda*s))
-    gcv <- gcv/(1-alpha*trace/S)^2
-    return(gcv)
-  }
-  
-  if(is.null(lambda)) {
-    if(!search.grid){
-      fit <- optim(0,face_gcv,method=method,lower=lower,upper=upper,control=control)
-      if(fit$convergence>0) {
-        expression <- paste("Smoothing failed! The code is:",fit$convergence)
-        print(expression)
-      }
-      lambda <- exp(fit$par)
-    } else {
-      Lambda <- seq(lower,upper,length=search.length)
-      Length <- length(Lambda)
-      Gcv <- rep(0,Length)
-      for(i in 1:Length) Gcv[i] <- face_gcv(Lambda[i])
-      i0 <- which.min(Gcv)
-      lambda <- exp(Lambda[i0])
-    }
-  }
-  YS <- matrix.multiply(Ytilde,1/(1+lambda*s),2)
-  
-  ###################################################
-  ####  Eigendecomposition of Smoothed Data #########
-  ###################################################
-  if(c.p <= n){
-    temp <- YS%*%t(YS)/n
-    Eigen <- eigen(temp,symmetric=TRUE)
-    A <- Eigen$vectors
-    Sigma <- Eigen$values/S
-  } else {
-    temp <- t(YS)%*%YS/n
-    Eigen <- eigen(temp,symmetric=TRUE)
-    Sigma <- Eigen$values/S
-    A <- YS%*%(Eigen$vectors%*%diag(1/sqrt(Eigen$values)))/sqrt(n)
-  }
-
-  
-  N <- min(n,c.p)
-  d <- Sigma[1:N]
-  d <- d[d>0]
-  per <- cumsum(d)/sum(d)
-  N <- ifelse (is.null(npc), min(which(per>pve)), min(npc, length(d)))
-  
-
-  A.N <- A[,1:N]
-  evalues <- S * Sigma[1:N]
-  tAsA = as.matrix(t(A.N)%*%(t(A0)%*%Bt))
-  Ktilde = t(tAsA) %*%  matrix.multiply(tAsA,evalues,2)
-
-  
-  return(list(Ktilde=Ktilde, evalues=evalues, efunctions=t(tAsA)))
-}
-  
 
 
 
@@ -219,7 +148,6 @@ quadWeights<- function(argvals, method = "trapezoidal")
   
   return(ret)  
 }
-
 
 
 
