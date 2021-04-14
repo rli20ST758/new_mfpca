@@ -160,7 +160,7 @@ mfpca.fast3 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   
   weight <- sqrt(nrow(df$Ytilde)/(sum(diagD) - nrow(df$Ytilde)))
   YH2 <-  do.call("rbind",lapply(1:I, function(x) {
-    weight * t(t(sqrt(Ji[x])*df$Ytilde[inx_row_ls[[x]],]) - Ysubm[x,]/sqrt(Ji[x]))
+    weight * t(t(sqrt(Ji[x])*df$Ytilde[inx_row_ls[[x]],,drop=FALSE]) - Ysubm[x,]/sqrt(Ji[x]))
   }))
   smooth.Gw <- face.Cov(Y=YH2, argvals, A0, Bt, s, c.p, pve, npc)
   
