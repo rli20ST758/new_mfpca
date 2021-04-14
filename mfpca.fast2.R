@@ -63,7 +63,7 @@ mfpca.fast2 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   ##################################################################################
   ## Estimate population mean function (mu) and group-specific mean function (eta)
   ##################################################################################
-  if(silent == FALSE) print("Estimate population and group-specific mean function")
+  if(silent == FALSE) print("Estimate population and group-specific mean functions")
   
   meanY <- colMeans(df$Y, na.rm = TRUE)
   fit_mu <- gam(meanY ~ s(argvals))
@@ -90,14 +90,13 @@ mfpca.fast2 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   
   
   ##################################################################################
-  ## FACE preparation: please see Xiao et al. (2016) for details
+  ## FACE preparation: see Xiao et al. (2016) for details
   ##################################################################################
   
   ## Specify the knots of B-spline basis
   if(length(knots) == 1){
     if(knots + p >= L) cat("Too many knots!\n")
     stopifnot(knots + p < L)
-
     K.p <- knots
     knots <- seq(-p, K.p+p, length = K.p+1+2*p) / K.p
     knots <- knots * (max(argvals) - min(argvals)) + min(argvals)
@@ -105,15 +104,15 @@ mfpca.fast2 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   if(length(knots) > 1) K.p <- length(knots) - 2*p - 1
   if(K.p >= L) cat("Too many knots!\n")
   stopifnot(K.p < L)
-  c.p <- K.p + p #the number of B-spline basis functions
+  c.p <- K.p + p ## the number of B-spline basis functions
   
   ## Precalculation for smoothing
   List <- pspline.setting(argvals, knots, p, m)
-  B <- List$B #B is the J ×c design matrix
+  B <- List$B ## the L × c design matrix
   Bt <- t(as.matrix(B))
-  Sigi.sqrt <- List$Sigi.sqrt #(t(B)B)^(-1/2)
-  s <- List$s #eigenvalues of Sigi_sqrt%*%(P%*%Sigi_sqrt)
-  U <- List$U #eigenvectors of Sigi_sqrt%*%(P%*%Sigi_sqrt)
+  Sigi.sqrt <- List$Sigi.sqrt ## (t(B)B)^(-1/2)
+  s <- List$s ## eigenvalues of Sigi_sqrt %*% (P %*% Sigi_sqrt)
+  U <- List$U ## eigenvectors of Sigi_sqrt %*% (P %*% Sigi_sqrt)
   A0 <- Sigi.sqrt %*% U
   
   
@@ -136,7 +135,7 @@ mfpca.fast2 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   ##################################################################################
   ## Estimate the level-specific covariance matrix (Kb and Kw)
   ##################################################################################
-  if(silent == FALSE) print("Estimate the level-specific covariance matrix")
+  if(silent == FALSE) print("Estimate the level-specific covariance matrices")
 
   Ji <- nGroups$numGroups
   diagD <- rep(Ji, Ji)
@@ -149,7 +148,7 @@ mfpca.fast2 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   smooth.Gw <- face.Cov(Y = HY, argvals, A0, Bt, s, c.p, Cov=T)
   
   Kw <- (t(smooth.Gw$Ktilde) + smooth.Gw$Ktilde) / 2
-  Kb <- Kt - Kw  ## the smoothed between covariance matrix
+  Kb <- Kt - Kw  ## the smoothed between-subject covariance matrix
   rm(Ji, diagD, inx_row_ls, weight, Ysubm, HY, smooth.Gw, B, Bt, s, Sigi.sqrt, U, A0)
   
   
@@ -164,10 +163,10 @@ mfpca.fast2 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   W0 <- (Wsqrt) %*% t(Wsqrt)
   V <- lapply(npc.0wb, function(x) W0*x)
   
-  ecomp <- lapply(V, function(x) eigen(x, only.values = TRUE, symmetric = TRUE)) #get npc
+  ecomp <- lapply(V, function(x) eigen(x, only.values = TRUE, symmetric = TRUE)) ## get npc
   evalues <- lapply(ecomp, function(x) replace(x$values, which(x$values <= 0), 0))
   npc <- lapply(evalues, function(x) ifelse(is.null(npc), min(which(cumsum(x)/sum(x) > pve)), npc))
-  ecomp <- lapply(names(V), function(x) eigs_sym(V[[x]], npc[[x]], which="LM")) #get the first npc eigenvectors
+  ecomp <- lapply(names(V), function(x) eigs_sym(V[[x]], npc[[x]], which="LM")) ## get the first npc eigenvectors
   efunctions <- lapply(1:2, function(x) 
     matrix((1/Wsqrt)*(ecomp[[x]])$vectors, nrow=L, ncol=npc[[x]]))
   evalues <- lapply(names(V), function(x) (evalues[[x]])[1:npc[[x]]])
