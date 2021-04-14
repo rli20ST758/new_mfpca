@@ -113,22 +113,23 @@ mfpca.fast3 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   if(length(knots)>1) K.p <- length(knots)-2*p-1
   if(K.p>=S) cat("Too many knots!\n")
   stopifnot(K.p < S)
-  c.p <- K.p + p
-  ######### precalculation for smoothing #############
+  c.p <- K.p + p #the number of B-spline basis functions
+  
+  ## Precalculation for smoothing
   List <- pspline.setting(argvals, knots, p, m)
-  B <- List$B
+  B <- List$B #B is the J ×c design matrix
   Bt <- t(as.matrix(B))
-  s <- List$s
-  Sigi.sqrt <- List$Sigi.sqrt
-  U <- List$U
-  A0 <- Sigi.sqrt%*%U
+  Sigi.sqrt <- List$Sigi.sqrt #(t(B)B)^(-1/2)
+  s <- List$s #eigenvalues of Sigi_sqrt%*%(P%*%Sigi_sqrt)
+  U <- List$U #eigenvectors of Sigi_sqrt%*%(P%*%Sigi_sqrt)
+  A0 <- Sigi.sqrt %*% U
   
   
   ##################################################################################
   ## impute missing data of Y using FACE approach
   ##################################################################################
-  smooth.Gt = face.Cov(Y=unclass(df$Ytilde), argvals, A0, Bt, s, c.p, pve, npc)
-  # smooth.Gt = face.Cov(Y=unclass(df$Ytilde), argvals, A0, Bt, s, c.p, pve, npc, Cov=T)
+  smooth.Gt = face.Cov(Y=unclass(df$Ytilde), argvals, A0, Bt, s, c.p)
+  # smooth.Gt = face.Cov(Y=unclass(df$Ytilde), argvals, A0, Bt, s, c.p)
   # Kt = smooth.Gt$Ktilde
   if(!is.null(is.na(df$Ytilde))){
     df$Ytilde[which(is.na(df$Ytilde))] <- smooth.Gt$Yhat[which(is.na(df$Ytilde))]
@@ -149,7 +150,7 @@ mfpca.fast3 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   inx_row_ls <- split(1:nrow(df$Ytilde), f=factor(df$id, levels=unique(df$id)))
   Ysubm <- t(vapply(inx_row_ls, function(x) colSums(df$Ytilde[x,,drop=FALSE],na.rm=TRUE), numeric(S))) 
   YH1 <- sqrt((Ji-1)/Ji) * weight * Ysubm
-  smooth.Gb <- face.Cov(Y=YH1, argvals, A0, Bt, s, c.p, pve, npc)
+  smooth.Gb <- face.Cov(Y=YH1, argvals, A0, Bt, s, c.p)
   
   
   
@@ -162,12 +163,12 @@ mfpca.fast3 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   YH2 <-  do.call("rbind",lapply(1:I, function(x) {
     weight * t(t(sqrt(Ji[x])*df$Ytilde[inx_row_ls[[x]],,drop=FALSE]) - Ysubm[x,]/sqrt(Ji[x]))
   }))
-  smooth.Gw <- face.Cov(Y=YH2, argvals, A0, Bt, s, c.p, pve, npc)
+  smooth.Gw <- face.Cov(Y=YH2, argvals, A0, Bt, s, c.p)
   
   rm(Ji, diagD, inx_row_ls, weight, Ysubm, YH1, YH2, B, Bt, s, Sigi.sqrt, U, A0)
   
 
-  # temp <- face.Cov(Y=YH2, A0, Bt, s, c.p, pve, npc, Cov=T)
+  # temp <- face.Cov(Y=YH2, A0, Bt, s, c.p, Cov=T)
   # Kw = temp$Ktilde
   # Kb <- (Kt - Kw + t(Kt - Kw))/2 ## the smoothed between covariance matrix
   
