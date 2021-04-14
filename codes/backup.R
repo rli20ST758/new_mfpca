@@ -1,6 +1,6 @@
 
 
-face.Cov <- function(Y, argvals, A0, Bt, s, c.p, pve, npc, Cov=FALSE, lambda=NULL, alpha=1, 
+face.Cov <- function(Y, argvals, A0, Bt, s, c.p, Cov=FALSE, pve=0.99, npc=NULL, lambda=NULL, alpha=1, 
                       search.grid=TRUE, search.length=100, lower=-20, upper=20){
   
   ######## precalculation for missing data ########
