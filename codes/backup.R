@@ -6,7 +6,7 @@ face.Cov <- function(Y, argvals, A0, Bt, s, c.p, Cov=FALSE, pve=0.99, npc=NULL, 
   ######## precalculation for missing data ########
   imputation <- FALSE
   Niter.miss <- 1
-  S <- ncol(Y)
+  L <- ncol(Y)
   n <- nrow(Y)
   
   Index.miss <- is.na(Y)
@@ -15,8 +15,8 @@ face.Cov <- function(Y, argvals, A0, Bt, s, c.p, Cov=FALSE, pve=0.99, npc=NULL, 
     for(i in 1:n){
       if(num.miss[i]>0){
         y <- Y[i,]
-        seq <- (1:S)[!is.na(y)]
-        seq2 <-(1:S)[is.na(y)]
+        seq <- (1:L)[!is.na(y)]
+        seq2 <-(1:L)[is.na(y)]
         t1 <- argvals[seq]
         t2 <- argvals[seq2]
         fit <- smooth.spline(t1,y[seq])
@@ -52,7 +52,7 @@ face.Cov <- function(Y, argvals, A0, Bt, s, c.p, Cov=FALSE, pve=0.99, npc=NULL, 
       lambda_s <- (lambda*s)^2/(1 + lambda*s)^2
       gcv <- sum(C_diag*lambda_s) - Ytilde_square + Y_square
       trace <- sum(1/(1+lambda*s))
-      gcv <- gcv/(1-alpha*trace/S/(1-totalmiss))^2
+      gcv <- gcv/(1-alpha*trace/L/(1-totalmiss))^2
       return(gcv)
     }
     
@@ -85,11 +85,11 @@ face.Cov <- function(Y, argvals, A0, Bt, s, c.p, Cov=FALSE, pve=0.99, npc=NULL, 
       temp <- YS%*%t(YS)/n
       Eigen <- eigen(temp,symmetric=TRUE)
       A <- Eigen$vectors
-      Sigma <- Eigen$values/S
+      Sigma <- Eigen$values/L
     } else {
       temp <- t(YS)%*%YS/n
       Eigen <- eigen(temp,symmetric=TRUE)
-      Sigma <- Eigen$values/S
+      Sigma <- Eigen$values/L
       A <- YS%*%(Eigen$vectors%*%diag(1/sqrt(Eigen$values)))/sqrt(n)
     }
     if(iter.miss>1&&iter.miss< Niter.miss) {
@@ -115,7 +115,7 @@ face.Cov <- function(Y, argvals, A0, Bt, s, c.p, Cov=FALSE, pve=0.99, npc=NULL, 
       d <- Sigma[1:N]
       sigmahat2  <-  max(mean(Y[!Index.miss]^2) -sum(Sigma),0)
       Xi <- t(A.N)%*%Ytilde
-      Xi <- t(as.matrix(t(Bt)%*%(A0%*%((A.N%*%diag(d/(d+sigmahat2/S)))%*%Xi))))
+      Xi <- t(as.matrix(t(Bt)%*%(A0%*%((A.N%*%diag(d/(d+sigmahat2/L)))%*%Xi))))
       Y <- Y*(1-Index.miss) + Xi*Index.miss
       if(sum(is.na(Y))>0) print("error")
     }
@@ -124,7 +124,7 @@ face.Cov <- function(Y, argvals, A0, Bt, s, c.p, Cov=FALSE, pve=0.99, npc=NULL, 
   
   
   A.N <- A[,1:N]
-  evalues <- S*Sigma[1:N]
+  evalues <- L*Sigma[1:N]
   #As <- t(Bt)%*%A0
   tAsA <- as.matrix(t(A.N)%*%(t(A0)%*%Bt))
   Ktilde <- NULL
