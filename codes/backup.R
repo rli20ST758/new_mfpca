@@ -125,13 +125,14 @@ face.Cov <- function(Y, argvals, A0, Bt, s, c.p, Cov=FALSE, pve=0.99, npc=NULL, 
   
   A.N <- A[,1:N]
   evalues <- S*Sigma[1:N]
+  #As <- t(Bt)%*%A0
   tAsA <- as.matrix(t(A.N)%*%(t(A0)%*%Bt))
   Ktilde <- NULL
   if(Cov) {
     Ktilde <- t(tAsA) %*%  matrix.multiply(tAsA,evalues,2)
   }
   
-  return(list(Yhat=Y, Ktilde=Ktilde, evalues=evalues, evectors=t(tAsA)))
+  return(list(Yhat=Y, decom=temp, Ktilde=Ktilde, evalues=evalues, evectors=t(tAsA)))
 }
 
 
