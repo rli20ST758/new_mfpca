@@ -125,7 +125,7 @@ mfpca.fast2 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   Kt <- (t(smooth.Gt$Ktilde) + smooth.Gt$Ktilde) / 2
   
   ## impute missing data of Y using FACE approach
-  if(!is.null(is.na(df$Ytilde))){
+  if(sum(is.na(df$Ytilde))>0){
     df$Ytilde[which(is.na(df$Ytilde))] <- smooth.Gt$Yhat[which(is.na(df$Ytilde))]
   }
   diag_Gt <- colMeans(df$Ytilde^2)
