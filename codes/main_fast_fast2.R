@@ -8,7 +8,7 @@ library(simex)
 library(splines)
 library(rARPACK)
 
-source("codes/GeneData.R")
+source("codes/GeneData.2.R")
 source("codes/fbps.cov.R")
 source("codes/backup.R")
 source("mfpca.fast.R")
@@ -18,9 +18,9 @@ source("mfpca.fast3.R")
 
 
 set.seed(3)
-Nsub=100; J=5; D=5000
+Nsub=100; J=5; L=5000
 design="regular"
-data <- GeneData(M=Nsub, J=J, N=D,  design=design, level=0.95, sigma=0)
+data <- GeneData(I=Nsub, J=J, L=L,  design=design, level=0.95, sigma=1, balanced=T)
 Y <- data$Y
 visit <- rep(1:J,times=Nsub)
 id <- rep(1:Nsub,each=J)
