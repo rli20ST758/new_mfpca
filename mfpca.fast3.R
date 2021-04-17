@@ -129,57 +129,65 @@ mfpca.fast3 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   ## impute missing data of Y using FACE approach
   ##################################################################################
   smooth.Gt = face.Cov(Y=unclass(df$Ytilde), argvals, A0, Bt, s, c.p)
-  # smooth.Gt = face.Cov(Y=unclass(df$Ytilde), argvals, A0, Bt, s, c.p)
-  # Kt = smooth.Gt$Ktilde
   if(!is.null(is.na(df$Ytilde))){
     df$Ytilde[which(is.na(df$Ytilde))] <- smooth.Gt$Yhat[which(is.na(df$Ytilde))]
   }
   diag_Gt <- colMeans(df$Ytilde^2)
-  rm(smooth.Gt)
-  
-  
-  
-  ##################################################################################
-  ## Estimate principal components of Kb (the between covariance)
-  ##################################################################################
-  if(silent == FALSE) print("Step 3: Estimate the between (Kb) subject covariance matrix")
-
-  Ji <- as.numeric(table(df$id))
-  diagD <- rep(Ji, Ji)
-  weight <- sqrt(I/(sum(diagD) - nrow(df$Ytilde)))
-  inx_row_ls <- split(1:nrow(df$Ytilde), f=factor(df$id, levels=unique(df$id)))
-  Ysubm <- t(vapply(inx_row_ls, function(x) colSums(df$Ytilde[x,,drop=FALSE],na.rm=TRUE), numeric(S))) 
-  YH1 <- sqrt((Ji-1)/Ji) * weight * Ysubm
-  smooth.Gb <- face.Cov(Y=YH1, argvals, A0, Bt, s, c.p)
   
   
   
   ##################################################################################
   ## Estimate principal components of Kw (the within covariance)
   ##################################################################################
-  if(silent == FALSE) print("Step 4: Estimate the within (Kw) subject covariance matrix")
-  
+  if(silent == FALSE) print("Step 3: Estimate the within (Kw) subject covariance matrix")
+  Ji <- as.numeric(table(df$id))
+  diagD <- rep(Ji, Ji)
+  inx_row_ls <- split(1:nrow(df$Ytilde), f=factor(df$id, levels=unique(df$id)))
   weight <- sqrt(nrow(df$Ytilde)/(sum(diagD) - nrow(df$Ytilde)))
-  YH2 <-  do.call("rbind",lapply(1:I, function(x) {
+  Ysubm <- t(vapply(inx_row_ls, function(x) colSums(df$Ytilde[x,,drop=FALSE],na.rm=TRUE), numeric(S))) 
+  RY <-  do.call("rbind",lapply(1:I, function(x) {
     weight * t(t(sqrt(Ji[x])*df$Ytilde[inx_row_ls[[x]],,drop=FALSE]) - Ysubm[x,]/sqrt(Ji[x]))
   }))
-  smooth.Gw <- face.Cov(Y=YH2, argvals, A0, Bt, s, c.p)
+  smooth.Gw <- face.Cov(Y=RY, argvals, A0, Bt, s, c.p)
   
-  rm(Ji, diagD, inx_row_ls, weight, Ysubm, YH1, YH2, B, Bt, s, Sigi.sqrt, U, A0)
+  rm(Ji, diagD, inx_row_ls, weight, Ysubm, RY, Bt, s, Sigi.sqrt, U)
+  
+  
+  
+  ##################################################################################
+  ## Estimate principal components of Kb (the between covariance)
+  ##################################################################################
+  if(silent == FALSE) print("Step 4: Estimate the between (Kb) subject covariance matrix")
+  
+  temp = smooth.Gt$decom - smooth.Gw$decom
+  Eigen <- eigen(temp,symmetric=TRUE)
+  A <- Eigen$vectors
+  Sigma <- Eigen$values
+  d <- Sigma[1:c.p]
+  d <- d[d>0]
+  per <- cumsum(d)/sum(d)
+  N <- ifelse (is.null(npc), min(which(per>pve)), min(npc, length(d)))
+  A.N <- A[,1:N]
+  smooth.Gb <- list(evalues=Sigma[1:N], evectors=as.matrix(B%*%A0%*%A.N))
+  rm(smooth.Gt, temp, Eigen, A, Sigma, d, per, N, B, A0, A.N)
+  
+  # Ji <- as.numeric(table(df$id))
+  # diagD <- rep(Ji, Ji)
+  # #weight <- sqrt(I/(sum(diagD) - nrow(df$Ytilde)))
+  # weight <- sqrt(I/sum(diagD))
+  # inx_row_ls <- split(1:nrow(df$Ytilde), f=factor(df$id, levels=unique(df$id)))
+  # Ysubm <- t(vapply(inx_row_ls, function(x) colSums(df$Ytilde[x,,drop=FALSE],na.rm=TRUE), numeric(S))) 
+  # #YH1 <- sqrt((Ji-1)/Ji) * weight * Ysubm
+  # YH1 <- weight * Ysubm
+  # smooth.Gb <- face.Cov(Y=YH1, argvals, A0, Bt, s, c.p)
   
 
-  # temp <- face.Cov(Y=YH2, A0, Bt, s, c.p, Cov=T)
-  # Kw = temp$Ktilde
-  # Kb <- (Kt - Kw + t(Kt - Kw))/2 ## the smoothed between covariance matrix
-  
   ###########################################################################################
   ## Estimate eigen values and eigen functions at two levels by calling the 
   ## eigen function (in R "base" package) on discretized covariance matrices.
   ###########################################################################################
   if(silent == FALSE) print("Step 6: Estimate eigen values and eigen functions at two levels")
   
-  
-  # Method 1: face. computating time: o(nL)
   w <- quadWeights(argvals, method = "trapezoidal")
   Wsqrt <- sqrt(w)
   efunctions <- list(level1=smooth.Gb$evectors/Wsqrt, level2=smooth.Gw$evectors/Wsqrt)
@@ -189,24 +197,7 @@ mfpca.fast3 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   rm(w, Wsqrt, smooth.Gb, smooth.Gw)
   
   
-  # w <- quadWeights(argvals, method = "trapezoidal")
-  # Wsqrt <- sqrt(w)
-  # npc.0wb <- list(level1 = Kb, level2 = Kw)  
-  # W0 <- (Wsqrt) %*% t(Wsqrt)
-  # V <- lapply(npc.0wb, function(x) W0*x)
-  # 
-  # ecomp <- lapply(V, function(x) eigen(x, only.values = TRUE, symmetric = TRUE)) #get npc
-  # evalues <- lapply(ecomp, function(x) replace(x$values, which(x$values <= 0), 0))
-  # npc <- lapply(evalues, function(x) ifelse(is.null(npc), min(which(cumsum(x)/sum(x) > pve)), npc))
-  # ecomp <- lapply(1:2, function(x) eigs_sym(V[[x]], npc[[x]], which="LM")) #get the first npc eigenvectors
-  # efunctions <- lapply(names(V), function(x) 
-  #   matrix((1/Wsqrt)*(ecomp[[x]])$vectors, nrow=S, ncol=npc[[x]]))
-  # evalues <- lapply(names(V), function(x) (evalues[[x]])[1:npc[[x]]])
-  # names(efunctions) <- names(evalues) <- names(npc) <- c("level1", "level2")
-  # rm(w, Wsqrt, npc.0wb, V, ecomp, W0)
-  
-  
-  
+
   ###################################################################
   # Estimate the measurement error variance (sigma^2)
   ###################################################################
@@ -219,7 +210,6 @@ mfpca.fast3 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   DIAG <- (diag_Gt - cov.hat[[1]] - cov.hat[[2]])[T1.min:T1.max]
   w2 <- quadWeights(argvals[T1.min:T1.max], method = "trapezoidal")
   sigma2 <- max(weighted.mean(DIAG, w = w2, na.rm = TRUE), 0) ## estimated measurement error variance
-  
   rm(cov.hat, T.len, T1.min, T1.max, DIAG, w2)
   
   
