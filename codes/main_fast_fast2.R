@@ -14,16 +14,15 @@ source("codes/backup.R")
 source("mfpca.fast.R")
 source("mfpca.fast2.R")
 source("mfpca.fast3.R")
+source("mfpca.fast4.R")
 
 
-
-set.seed(3)
-Nsub=100; J=5; L=5000
+#set.seed(2149)
+Nsub=100; J=2; L=100
 design="regular"
-data <- GeneData(I=Nsub, J=J, L=L,  design=design, level=0.95, sigma=1, balanced=T)
+data <- GeneData(I=Nsub, J=J, L=L,  design=design, level=0.95, sigma=1, balanced=FALSE)
 Y <- data$Y
-visit <- rep(1:J,times=Nsub)
-id <- rep(1:Nsub,each=J)
+id <- data$id
 
 
 # True values
@@ -100,7 +99,7 @@ mpca2 <- c(time2, MISE2_Y, MISE2_eigen1, MISE2_eigen2)
 ####step 3:  mfpca.fast3
 #########################################################
 s1 <- Sys.time()
-fit3 <-   mfpca.fast3(Y=Y, id=id)
+fit3 <-   mfpca.fast4(Y=Y, id=id)
 s2 <- Sys.time()
 time3 <- difftime(s2, s1, units="mins")
 
@@ -175,7 +174,7 @@ mpca <- c(MISE_eigen1, MISE_eigen2)
 round(mpca1,4)
 round(mpca2,4)
 round(mpca3,4)
-round(mpca,4)
+#round(mpca,4)
 
 
 
