@@ -54,13 +54,13 @@ mfpca.fast3 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   
   ## derive several variables that will be used later
   J <- length(levels(df$group)) ## number of groups
-  S <- ncol(df$Y) ## number of observations along the domain
+  L <- ncol(df$Y) ## number of observations along the domain
   nGroups <- data.frame(table(df$id))  ## calculate number of groups for each subject
   colnames(nGroups) = c("id", "numGroups")
   ID = sort(unique(df$id)) ## id of each subject
   I <- length(ID) ## number of subjects
   ## assume observations are equally-spaced on [0,1] if not specified
-  if (is.null(argvals))  argvals <- seq(0, 1, length.out=S) 
+  if (is.null(argvals))  argvals <- seq(0, 1, length.out=L) 
   
   ##################################################################################
   ## Estimate population mean function (mu)
@@ -79,8 +79,8 @@ mfpca.fast3 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   ##################################################################################
   if(silent == FALSE) print("Step 2: Estimate group-specific mean function (eta)")
   
-  mueta = matrix(NA, S, J) 
-  eta = matrix(NA, S, J) ## matrix to store visit-specific means
+  mueta = matrix(NA, L, J) 
+  eta = matrix(NA, L, J) ## matrix to store visit-specific means
   colnames(mueta) <- colnames(eta) <- levels(df$group)
   Ytilde <- matrix(NA, nrow = nrow(df$Y), ncol = ncol(df$Y))
   for(j in 1:J){
@@ -94,7 +94,7 @@ mfpca.fast3 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
     mueta[,j] <- predict(fit_mueta, newdata = data.frame(argvals = argvals))
     # mueta[,j] <- smooth.spline(argvals, meanYj, all.knots = FALSE)$y
     eta[,j] <- mueta[,j] - mu
-    Ytilde[ind_j,] <- df$Y[ind_j,] - matrix(mueta[,j], nrow = length(ind_j), ncol = S, byrow = TRUE)
+    Ytilde[ind_j,] <- df$Y[ind_j,] - matrix(mueta[,j], nrow = length(ind_j), ncol = L, byrow = TRUE)
   }
   df$Ytilde <- I(Ytilde) ## Ytilde is the centered multilevel functional data
   rm(Ytilde, meanYj, ind_j, j)
@@ -103,16 +103,16 @@ mfpca.fast3 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   ## specify the B-spline basis: knots
   ##################################################################################
   if(length(knots)==1){
-    if(knots+p>=S) cat("Too many knots!\n")
-    stopifnot(knots+p<S)
+    if(knots+p>=L) cat("Too many knots!\n")
+    stopifnot(knots+p<L)
     
     K.p <- knots
     knots <- seq(-p, K.p+p, length=K.p+1+2*p)/K.p
     knots <- knots*(max(argvals)-min(argvals)) + min(argvals)
   }
   if(length(knots)>1) K.p <- length(knots)-2*p-1
-  if(K.p>=S) cat("Too many knots!\n")
-  stopifnot(K.p < S)
+  if(K.p>=L) cat("Too many knots!\n")
+  stopifnot(K.p < L)
   c.p <- K.p + p #the number of B-spline basis functions
   
   ## Precalculation for smoothing
@@ -144,13 +144,13 @@ mfpca.fast3 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   diagD <- rep(Ji, Ji)
   inx_row_ls <- split(1:nrow(df$Ytilde), f=factor(df$id, levels=unique(df$id)))
   weight <- sqrt(nrow(df$Ytilde)/(sum(diagD) - nrow(df$Ytilde)))
-  Ysubm <- t(vapply(inx_row_ls, function(x) colSums(df$Ytilde[x,,drop=FALSE],na.rm=TRUE), numeric(S))) 
-  RY <-  do.call("rbind",lapply(1:I, function(x) {
+  Ysubm <- t(vapply(inx_row_ls, function(x) colSums(df$Ytilde[x,,drop=FALSE],na.rm=TRUE), numeric(L))) 
+  YR <-  do.call("rbind",lapply(1:I, function(x) {
     weight * t(t(sqrt(Ji[x])*df$Ytilde[inx_row_ls[[x]],,drop=FALSE]) - Ysubm[x,]/sqrt(Ji[x]))
   }))
-  smooth.Gw <- face.Cov(Y=RY, argvals, A0, Bt, s, c.p)
+  smooth.Gw <- face.Cov(Y=YR, argvals, A0, Bt, s, c.p)
   
-  rm(Ji, diagD, inx_row_ls, weight, Ysubm, RY, Bt, s, Sigi.sqrt, U)
+  rm(Ji, diagD, inx_row_ls, weight, Ysubm, YR, Bt, s, Sigi.sqrt, U)
   
   
   
@@ -176,7 +176,7 @@ mfpca.fast3 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   # #weight <- sqrt(I/(sum(diagD) - nrow(df$Ytilde)))
   # weight <- sqrt(I/sum(diagD))
   # inx_row_ls <- split(1:nrow(df$Ytilde), f=factor(df$id, levels=unique(df$id)))
-  # Ysubm <- t(vapply(inx_row_ls, function(x) colSums(df$Ytilde[x,,drop=FALSE],na.rm=TRUE), numeric(S))) 
+  # Ysubm <- t(vapply(inx_row_ls, function(x) colSums(df$Ytilde[x,,drop=FALSE],na.rm=TRUE), numeric(L))) 
   # #YH1 <- sqrt((Ji-1)/Ji) * weight * Ysubm
   # YH1 <- weight * Ysubm
   # smooth.Gb <- face.Cov(Y=YH1, argvals, A0, Bt, s, c.p)
@@ -191,7 +191,7 @@ mfpca.fast3 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   w <- quadWeights(argvals, method = "trapezoidal")
   Wsqrt <- sqrt(w)
   efunctions <- list(level1=smooth.Gb$evectors/Wsqrt, level2=smooth.Gw$evectors/Wsqrt)
-  evalues <- list(level1=smooth.Gb$evalues/S,level2=smooth.Gw$evalues/S)
+  evalues <- list(level1=smooth.Gb$evalues/L,level2=smooth.Gw$evalues/L)
   npc <- list(level1=length(evalues[[1]]), level2=length(evalues[[2]]))
   names(efunctions) <- names(evalues) <- names(npc) <- c("level1", "level2")
   rm(w, Wsqrt, smooth.Gb, smooth.Gw)
@@ -204,9 +204,9 @@ mfpca.fast3 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   if(silent == FALSE) print("Step 7: Estimate the measurement error variance (sigma^2)")
   
   cov.hat <- lapply(c("level1", "level2"), function(x) colSums(t(efunctions[[x]]^2)*evalues[[x]]))
-  T.len <- argvals[S] - argvals[1]
+  T.len <- argvals[L] - argvals[1]
   T1.min <- min(which(argvals >= argvals[1] + 0.25 * T.len))
-  T1.max <- max(which(argvals <= argvals[S] - 0.25 * T.len))
+  T1.max <- max(which(argvals <= argvals[L] - 0.25 * T.len))
   DIAG <- (diag_Gt - cov.hat[[1]] - cov.hat[[2]])[T1.min:T1.max]
   w2 <- quadWeights(argvals[T1.min:T1.max], method = "trapezoidal")
   sigma2 <- max(weighted.mean(DIAG, w = w2, na.rm = TRUE), 0) ## estimated measurement error variance
@@ -219,7 +219,7 @@ mfpca.fast3 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   if(silent == FALSE) print("Step 8: Estimate principal component scores -- may take some time")
   
   ## estimated subject-visit and subject-specific underlying smooth curves
-  Xhat <- Xhat.subject <- matrix(0, nrow(df$Y), S) 
+  Xhat <- Xhat.subject <- matrix(0, nrow(df$Y), L) 
   phi1 <- efunctions[[1]] ## extract eigenfunctions for simpler notations
   phi2 <- efunctions[[2]]
   score1 <- matrix(0, I, npc[[1]]) ## matrices storing scores of two levels
@@ -253,7 +253,7 @@ mfpca.fast3 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
       
       ## estimate the principal component scores using MME
       ind.Jm <- nGroups$id[which(nGroups$numGroups == Jm)]
-      YJm <- matrix(df$Ytilde[which(df$id %in% ind.Jm),], ncol = S)
+      YJm <- matrix(df$Ytilde[which(df$id %in% ind.Jm),], ncol = L)
       int1 <- rowsum(df$Ytilde[which(df$id %in% ind.Jm),] %*% phi1, rep(1:length(ind.Jm), each = Jm))
       int2 <- t(matrix(t(df$Ytilde[which(df$id %in% ind.Jm),] %*% phi2), nrow = npc[[2]]*Jm))
       int <- cbind(int1, int2)
@@ -300,8 +300,8 @@ mfpca.fast3 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
       Mat2 <- cbind(MatF,MatH)
       
       ## estimate the principal component scores
-      int1 <- colSums(matrix(df$Ytilde[df$id==ID[m],], ncol = S) %*% phi1)
-      int2 <- matrix(df$Ytilde[df$id==ID[m],], ncol = S) %*% phi2
+      int1 <- colSums(matrix(df$Ytilde[df$id==ID[m],], ncol = L) %*% phi1)
+      int2 <- matrix(df$Ytilde[df$id==ID[m],], ncol = L) %*% phi2
       if(sigma2 < 1e-4){
         int <- c(int1, as.vector(t(int2)))
       }else{
@@ -331,7 +331,7 @@ mfpca.fast3 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
               efunctions = efunctions, evalues = evalues, npc = npc, sigma2 = sigma2, Y = df$Y)
   
   rm(df, efunctions, eta, evalues, mueta, nGroups, npc, scores, Xhat, Xhat.subject, 
-     argvals, diag_Gt, I, ID, J, mu, pve, S, sigma2)
+     argvals, diag_Gt, I, ID, J, mu, pve, L, sigma2)
   
   return(res)
 }
