@@ -8,7 +8,7 @@ library(simex)
 library(splines)
 library(rARPACK)
 
-source("codes/GeneData.2.R")
+source("GeneData.2.R")
 source("codes/fbps.cov.R")
 source("codes/backup.R")
 source("mfpca.fast.R")
@@ -56,10 +56,10 @@ MISE1_Y <- diff1/num
 # MISE of eigenfucntions
 MISE1_eigen1 <- sum(unlist(lapply(1:K1, function(x){
   min(sum((eigenf_true[[1]][,x]-fit1$efunctions[[1]][,x])^2),sum((eigenf_true[[1]][,x]+fit1$efunctions[[1]][,x])^2))
-})))/(K1*D)
+})))/(K1*L)
 MISE1_eigen2 <- sum(unlist(lapply(1:K2, function(x){
   min(sum((eigenf_true[[2]][,x]-fit1$efunctions[[2]][,x])^2),sum((eigenf_true[[2]][,x]+fit1$efunctions[[2]][,x])^2))
-})))/(K2*D)
+})))/(K2*L)
 mpca1 <- c(time1, MISE1_Y, MISE1_eigen1, MISE1_eigen2)
 
 
@@ -87,10 +87,10 @@ MISE2_Y <- diff2/num
 # MISE of eigenfucntions
 MISE2_eigen1 <- sum(unlist(lapply(1:K1, function(x){
   min(sum((eigenf_true[[1]][,x]-fit2$efunctions[[1]][,x])^2),sum((eigenf_true[[1]][,x]+fit2$efunctions[[1]][,x])^2))
-})))/(K1*D)
+})))/(K1*L)
 MISE2_eigen2 <- sum(unlist(lapply(1:K2, function(x){
   min(sum((eigenf_true[[2]][,x]-fit2$efunctions[[2]][,x])^2),sum((eigenf_true[[2]][,x]+fit2$efunctions[[2]][,x])^2))
-})))/(K2*D)
+})))/(K2*L)
 mpca2 <- c(time2, MISE2_Y, MISE2_eigen1, MISE2_eigen2)
 
 
@@ -118,10 +118,10 @@ MISE3_Y <- diff3/num
 # MISE of eigenfucntions
 MISE3_eigen1 <- sum(unlist(lapply(1:K1, function(x){
   min(sum((eigenf_true[[1]][,x]-fit3$efunctions[[1]][,x])^2),sum((eigenf_true[[1]][,x]+fit3$efunctions[[1]][,x])^2))
-})))/(K1*D)
+})))/(K1*L)
 MISE3_eigen2 <- sum(unlist(lapply(1:K2, function(x){
   min(sum((eigenf_true[[2]][,x]-fit3$efunctions[[2]][,x])^2),sum((eigenf_true[[2]][,x]+fit3$efunctions[[2]][,x])^2))
-})))/(K2*D)
+})))/(K2*L)
 mpca3 <- c(time3, MISE3_Y, MISE3_eigen1, MISE3_eigen2)
 
 
@@ -149,10 +149,10 @@ mpca3 <- c(time3, MISE3_Y, MISE3_eigen1, MISE3_eigen2)
 # # MISE of eigenfucntions
 # MISE3_eigen1 <- sum(unlist(lapply(1:K1, function(x){
 #   min(sum((eigenf_true[[1]][,x]-fit3$efunctions[[1]][,x])^2),sum((eigenf_true[[1]][,x]+fit3$efunctions[[1]][,x])^2))
-# })))/(K1*D)
+# })))/(K1*L)
 # MISE3_eigen2 <- sum(unlist(lapply(1:K2, function(x){
 #   min(sum((eigenf_true[[2]][,x]-fit3$efunctions[[2]][,x])^2),sum((eigenf_true[[2]][,x]+fit3$efunctions[[2]][,x])^2))
-# })))/(K2*D)
+# })))/(K2*L)
 # mpca3 <- c(time3, MISE3_Y, MISE3_eigen1, MISE3_eigen2)
 
 
@@ -163,10 +163,10 @@ mpca3 <- c(time3, MISE3_Y, MISE3_eigen1, MISE3_eigen2)
 ################################################################
 MISE_eigen1 <- sum(unlist(lapply(1:K1, function(x){
   min(sum((fit1$efunctions[[1]][,x]-fit2$efunctions[[1]][,x])^2),sum((fit1$efunctions[[1]][,x]+fit2$efunctions[[1]][,x])^2))
-})))/(K1*D)
+})))/(K1*L)
 MISE_eigen2 <- sum(unlist(lapply(1:K2, function(x){
   min(sum((fit1$efunctions[[2]][,x]-fit2$efunctions[[2]][,x])^2),sum((fit1$efunctions[[2]][,x]+fit2$efunctions[[2]][,x])^2))
-})))/(K2*D)
+})))/(K2*L)
 
 mpca <- c(MISE_eigen1, MISE_eigen2)
 
