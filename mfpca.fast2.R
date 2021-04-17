@@ -27,7 +27,7 @@ mfpca.fast2 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   library(simex)
   library(Matrix)
   library(rARPACK)
-  source("./code/backup.R")
+  # source("./code/backup.R")
   
   ##################################################################################
   ## Organize the input
@@ -139,6 +139,9 @@ mfpca.fast2 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
 
   Ji <- nGroups$numGroups
   diagD <- rep(Ji, Ji)
+  
+  
+  ## method 1: smooth Gw jointly
   inx_row_ls <- split(1:nrow(df$Ytilde), f = factor(df$id, levels = unique(df$id)))
   weight <- sqrt(nrow(df$Ytilde) / (sum(diagD) - nrow(df$Ytilde)))
   Ysubm <- t(vapply(inx_row_ls, function(x) colSums(df$Ytilde[x,,drop=FALSE],na.rm=TRUE), numeric(L))) # The visit mean per subject 
@@ -146,8 +149,22 @@ mfpca.fast2 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
     weight * t(t(sqrt(Ji[x])*df$Ytilde[inx_row_ls[[x]],,drop=FALSE]) - Ysubm[x,]/sqrt(Ji[x]))
     }))
   smooth.Gw <- face.Cov(Y = HY, argvals, A0, Bt, s, c.p, Cov=T)
-  
   Kw <- (t(smooth.Gw$Ktilde) + smooth.Gw$Ktilde) / 2
+  
+  # ## method 2: smooth two parts of Gw separately
+  # ### first part of formula (Shou et al.2015): t(Y) %*% D %*% Y
+  # YD <- unclass(df$Ytilde)*sqrt(diagD)
+  # smooth.Gw1 <- face.Cov(Y = YD, argvals, A0, Bt, s, c.p, Cov=T)
+  # Kw1 <- nrow(YD) * smooth.Gw1$Ktilde
+  # ### second part of formula: t(E %*% Y) %*% E %*% Y
+  # inx_row_ls <- split(1:nrow(df$Ytilde), f=factor(df$id, levels=unique(df$id)))
+  # YE <- t(vapply(inx_row_ls, function(x) colSums(df$Ytilde[x,,drop=FALSE],na.rm=TRUE), numeric(L)))
+  # smooth.Gw2 <- face.Cov(Y = YE, argvals, A0, Bt, s, c.p, Cov=T)
+  # Kw2 <- nrow(YE) * smooth.Gw2$Ktilde
+  # Kw <- (Kw1 - Kw2) / (sum(diagD) - nrow(df$Ytilde))
+  # Kw <- (t(Kw) + Kw)/2
+  
+  
   Kb <- Kt - Kw  ## the smoothed between-subject covariance matrix
   rm(Ji, diagD, inx_row_ls, weight, Ysubm, HY, smooth.Gw, B, Bt, s, Sigi.sqrt, U, A0)
   
