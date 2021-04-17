@@ -142,32 +142,33 @@ mfpca.fast2 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   
   
   ## method 1: smooth Gw jointly
-  inx_row_ls <- split(1:nrow(df$Ytilde), f = factor(df$id, levels = unique(df$id)))
-  weight <- sqrt(nrow(df$Ytilde) / (sum(diagD) - nrow(df$Ytilde)))
-  Ysubm <- t(vapply(inx_row_ls, function(x) colSums(df$Ytilde[x,,drop=FALSE],na.rm=TRUE), numeric(L))) # The visit mean per subject 
-  HY <-  do.call("rbind", lapply(1:I, function(x) {
-    weight * t(t(sqrt(Ji[x])*df$Ytilde[inx_row_ls[[x]],,drop=FALSE]) - Ysubm[x,]/sqrt(Ji[x]))
-    }))
-  smooth.Gw <- face.Cov(Y = HY, argvals, A0, Bt, s, c.p, Cov=T)
-  Kw <- (t(smooth.Gw$Ktilde) + smooth.Gw$Ktilde) / 2
-  
+  # inx_row_ls <- split(1:nrow(df$Ytilde), f = factor(df$id, levels = unique(df$id)))
+  # weight <- sqrt(nrow(df$Ytilde) / (sum(diagD) - nrow(df$Ytilde)))
+  # Ysubm <- t(vapply(inx_row_ls, function(x) colSums(df$Ytilde[x,,drop=FALSE],na.rm=TRUE), numeric(L))) # The visit mean per subject 
+  # YR <-  do.call("rbind", lapply(1:I, function(x) {
+  #   weight * t(t(sqrt(Ji[x])*df$Ytilde[inx_row_ls[[x]],,drop=FALSE]) - Ysubm[x,]/sqrt(Ji[x]))
+  #   }))
+  # smooth.Gw <- face.Cov(Y = YR, argvals, A0, Bt, s, c.p, Cov=T)
+  # Kw <- (t(smooth.Gw$Ktilde) + smooth.Gw$Ktilde) / 2
+  # Kb <- Kt - Kw  ## the smoothed between-subject covariance matrix
+  # rm(Ji, diagD, inx_row_ls, weight, Ysubm, YR, smooth.Gw, Kt, B, Bt, s, Sigi.sqrt, U, A0)
+   
+
   # ## method 2: smooth two parts of Gw separately
   # ### first part of formula (Shou et al.2015): t(Y) %*% D %*% Y
-  # YD <- unclass(df$Ytilde)*sqrt(diagD)
-  # smooth.Gw1 <- face.Cov(Y = YD, argvals, A0, Bt, s, c.p, Cov=T)
-  # Kw1 <- nrow(YD) * smooth.Gw1$Ktilde
-  # ### second part of formula: t(E %*% Y) %*% E %*% Y
-  # inx_row_ls <- split(1:nrow(df$Ytilde), f=factor(df$id, levels=unique(df$id)))
-  # YE <- t(vapply(inx_row_ls, function(x) colSums(df$Ytilde[x,,drop=FALSE],na.rm=TRUE), numeric(L)))
-  # smooth.Gw2 <- face.Cov(Y = YE, argvals, A0, Bt, s, c.p, Cov=T)
-  # Kw2 <- nrow(YE) * smooth.Gw2$Ktilde
-  # Kw <- (Kw1 - Kw2) / (sum(diagD) - nrow(df$Ytilde))
-  # Kw <- (t(Kw) + Kw)/2
-  
-  
+  YD <- unclass(df$Ytilde)*sqrt(diagD)
+  smooth.Gw1 <- face.Cov(Y = YD, argvals, A0, Bt, s, c.p, Cov=T)
+  Kw1 <- nrow(YD) * smooth.Gw1$Ktilde
+  ### second part of formula: t(E %*% Y) %*% E %*% Y
+  inx_row_ls <- split(1:nrow(df$Ytilde), f=factor(df$id, levels=unique(df$id)))
+  YE <- t(vapply(inx_row_ls, function(x) colSums(df$Ytilde[x,,drop=FALSE],na.rm=TRUE), numeric(L)))
+  smooth.Gw2 <- face.Cov(Y = YE, argvals, A0, Bt, s, c.p, Cov=T)
+  Kw2 <- nrow(YE) * smooth.Gw2$Ktilde
+  Kw <- (Kw1 - Kw2) / (sum(diagD) - nrow(df$Ytilde))
+  Kw <- (t(Kw) + Kw)/2
   Kb <- Kt - Kw  ## the smoothed between-subject covariance matrix
-  rm(Ji, diagD, inx_row_ls, weight, Ysubm, HY, smooth.Gw, B, Bt, s, Sigi.sqrt, U, A0)
-  
+  rm(Ji, diagD, inx_row_ls, YD, YE, Kw1, Kw2, smooth.Gw1, smooth.Gw2, Kt, B, Bt, s, Sigi.sqrt, U, A0)
+
   
   ###########################################################################################
   ## Estimate the level-specific eigenvalues and eigenfunctions
@@ -188,7 +189,7 @@ mfpca.fast2 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
     matrix((1/Wsqrt)*(ecomp[[x]])$vectors, nrow=L, ncol=npc[[x]]))
   evalues <- lapply(names(V), function(x) (evalues[[x]])[1:npc[[x]]])
   names(efunctions) <- names(evalues) <- names(npc) <- c("level1", "level2")
-  rm(w, Wsqrt, npc.0wb, V, ecomp, W0)
+  rm(Kb, Kw, w, Wsqrt, npc.0wb, V, ecomp, W0)
   
   
   ###################################################################
@@ -319,7 +320,7 @@ mfpca.fast2 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   res <- list(Xhat = Xhat, Xhat.subject = Xhat.subject, mu = mu, eta = eta, scores = scores, 
               efunctions = efunctions, evalues = evalues, npc = npc, sigma2 = sigma2, Y = df$Y)
   
-  rm(df, efunctions, eta, evalues, Kb, Kt, Kw, mueta, nGroups, npc, scores, Xhat, Xhat.subject, 
+  rm(df, efunctions, eta, evalues, mueta, nGroups, npc, scores, Xhat, Xhat.subject, 
      argvals, diag_Gt, I, ID, J, mu, pve, L, sigma2)
   
   return(res)
