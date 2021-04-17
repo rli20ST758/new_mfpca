@@ -129,7 +129,7 @@ mfpca.fast3 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   ## impute missing data of Y using FACE approach
   ##################################################################################
   smooth.Gt = face.Cov(Y=unclass(df$Ytilde), argvals, A0, Bt, s, c.p)
-  if(!is.null(is.na(df$Ytilde))){
+  if(sum(is.na(df$Ytilde))>0){
     df$Ytilde[which(is.na(df$Ytilde))] <- smooth.Gt$Yhat[which(is.na(df$Ytilde))]
   }
   diag_Gt <- colMeans(df$Ytilde^2)
