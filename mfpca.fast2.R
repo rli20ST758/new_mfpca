@@ -144,7 +144,7 @@ mfpca.fast2 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   ## method 1: smooth Gw jointly
   # inx_row_ls <- split(1:nrow(df$Ytilde), f = factor(df$id, levels = unique(df$id)))
   # weight <- sqrt(nrow(df$Ytilde) / (sum(diagD) - nrow(df$Ytilde)))
-  # Ysubm <- t(vapply(inx_row_ls, function(x) colSums(df$Ytilde[x,,drop=FALSE],na.rm=TRUE), numeric(L))) # The visit mean per subject 
+  # Ysubm <- t(vapply(inx_row_ls, function(x) colSums(df$Ytilde[x,,drop=FALSE],na.rm=TRUE), numeric(L))) # The visit mean per subject
   # YR <-  do.call("rbind", lapply(1:I, function(x) {
   #   weight * t(t(sqrt(Ji[x])*df$Ytilde[inx_row_ls[[x]],,drop=FALSE]) - Ysubm[x,]/sqrt(Ji[x]))
   #   }))
@@ -152,7 +152,7 @@ mfpca.fast2 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   # Kw <- (t(smooth.Gw$Ktilde) + smooth.Gw$Ktilde) / 2
   # Kb <- Kt - Kw  ## the smoothed between-subject covariance matrix
   # rm(Ji, diagD, inx_row_ls, weight, Ysubm, YR, smooth.Gw, Kt, B, Bt, s, Sigi.sqrt, U, A0)
-   
+
 
   # ## method 2: smooth two parts of Gw separately
   # ### first part of formula (Shou et al.2015): t(Y) %*% D %*% Y
@@ -177,15 +177,16 @@ mfpca.fast2 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   
   w <- quadWeights(argvals, method = "trapezoidal")
   Wsqrt <- sqrt(w)
-  npc.0wb <- list(level1 = Kb, level2 = Kw)  
+  npc.0wb <- list(level1 = Kb, level2 = Kw)
   W0 <- (Wsqrt) %*% t(Wsqrt)
   V <- lapply(npc.0wb, function(x) W0*x)
-  
+  #V <- lapply(npc.0wb, function(x) x)
+
   ecomp <- lapply(V, function(x) eigen(x, only.values = TRUE, symmetric = TRUE)) ## get npc
   evalues <- lapply(ecomp, function(x) replace(x$values, which(x$values <= 0), 0))
   npc <- lapply(evalues, function(x) ifelse(is.null(npc), min(which(cumsum(x)/sum(x) > pve)), npc))
   ecomp <- lapply(names(V), function(x) eigs_sym(V[[x]], npc[[x]], which="LM")) ## get the first npc eigenvectors
-  efunctions <- lapply(1:2, function(x) 
+  efunctions <- lapply(1:2, function(x)
     matrix((1/Wsqrt)*(ecomp[[x]])$vectors, nrow=L, ncol=npc[[x]]))
   evalues <- lapply(names(V), function(x) (evalues[[x]])[1:npc[[x]]])
   names(efunctions) <- names(evalues) <- names(npc) <- c("level1", "level2")
