@@ -140,18 +140,45 @@ mfpca.fast3 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   ## Estimate principal components of Kw (the within covariance)
   ##################################################################################
   if(silent == FALSE) print("Step 3: Estimate the within (Kw) subject covariance matrix")
+  
+  
+  ## method 1: smooth Gw jointly
+  # Ji <- as.numeric(table(df$id))
+  # diagD <- rep(Ji, Ji)
+  # inx_row_ls <- split(1:nrow(df$Ytilde), f=factor(df$id, levels=unique(df$id)))
+  # weight <- sqrt(nrow(df$Ytilde)/(sum(diagD) - nrow(df$Ytilde)))
+  # Ysubm <- t(vapply(inx_row_ls, function(x) colSums(df$Ytilde[x,,drop=FALSE],na.rm=TRUE), numeric(L))) 
+  # YR <-  do.call("rbind",lapply(1:I, function(x) {
+  #   weight * t(t(sqrt(Ji[x])*df$Ytilde[inx_row_ls[[x]],,drop=FALSE]) - Ysubm[x,]/sqrt(Ji[x]))
+  # }))
+  # smooth.Gw <- face.Cov(Y=YR, argvals, A0, Bt, s, c.p)
+  # rm(Ji, diagD, inx_row_ls, weight, Ysubm, YR, Bt, s, Sigi.sqrt, U)
+
+  
+  # ## method 2: smooth two parts of Gw separately
+  # ### first part of formula (Shou et al.2015): t(Y) %*% D %*% Y
   Ji <- as.numeric(table(df$id))
   diagD <- rep(Ji, Ji)
+  #weight1 <- sqrt(nrow(df$Ytilde)/(sum(diagD) - nrow(df$Ytilde)))
+  YD <- unclass(df$Ytilde)*sqrt(diagD)
+  smooth.Gw1 <- face.Cov(Y = YD, argvals, A0, Bt, s, c.p)
+  # ### second part of formula: t(E %*% Y) %*% E %*% Y
   inx_row_ls <- split(1:nrow(df$Ytilde), f=factor(df$id, levels=unique(df$id)))
-  weight <- sqrt(nrow(df$Ytilde)/(sum(diagD) - nrow(df$Ytilde)))
-  Ysubm <- t(vapply(inx_row_ls, function(x) colSums(df$Ytilde[x,,drop=FALSE],na.rm=TRUE), numeric(L))) 
-  YR <-  do.call("rbind",lapply(1:I, function(x) {
-    weight * t(t(sqrt(Ji[x])*df$Ytilde[inx_row_ls[[x]],,drop=FALSE]) - Ysubm[x,]/sqrt(Ji[x]))
-  }))
-  smooth.Gw <- face.Cov(Y=YR, argvals, A0, Bt, s, c.p)
-  
-  rm(Ji, diagD, inx_row_ls, weight, Ysubm, YR, Bt, s, Sigi.sqrt, U)
-  
+  #weight2 <- sqrt(I/(sum(diagD) - nrow(df$Ytilde)))
+  YE <- t(vapply(inx_row_ls, function(x) colSums(df$Ytilde[x,,drop=FALSE],na.rm=TRUE), numeric(L)))
+  smooth.Gw2 <- face.Cov(Y = YE, argvals, A0, Bt, s, c.p)
+  # Obtain Kw
+  temp = (nrow(YD)*smooth.Gw1$decom - nrow(YE)*smooth.Gw2$decom)/(sum(diagD) - nrow(df$Ytilde))
+  Eigen <- eigen(temp,symmetric=TRUE)
+  A <- Eigen$vectors
+  Sigma <- Eigen$values
+  d <- Sigma[1:c.p]
+  d <- d[d>0]
+  per <- cumsum(d)/sum(d)
+  N <- ifelse (is.null(npc), min(which(per>pve)), min(npc, length(d)))
+  A.N <- A[,1:N]
+  smooth.Gw <- list(decom=temp, evalues=Sigma[1:N], evectors=as.matrix(B%*%A0%*%A.N))
+  rm(Ji, diagD, inx_row_ls, YD, YE, smooth.Gw1, smooth.Gw2, Bt, s, temp, Eigen, A, Sigma, d, per, N, A.N)
   
   
   ##################################################################################
@@ -190,7 +217,8 @@ mfpca.fast3 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   
   w <- quadWeights(argvals, method = "trapezoidal")
   Wsqrt <- sqrt(w)
-  efunctions <- list(level1=smooth.Gb$evectors/Wsqrt, level2=smooth.Gw$evectors/Wsqrt)
+  #efunctions <- list(level1=smooth.Gb$evectors/Wsqrt, level2=smooth.Gw$evectors/Wsqrt)
+  efunctions <- list(level1=sqrt(L)*smooth.Gb$evectors, level2=sqrt(L)*smooth.Gw$evectors)
   evalues <- list(level1=smooth.Gb$evalues/L,level2=smooth.Gw$evalues/L)
   npc <- list(level1=length(evalues[[1]]), level2=length(evalues[[2]]))
   names(efunctions) <- names(evalues) <- names(npc) <- c("level1", "level2")
