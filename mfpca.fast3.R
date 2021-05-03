@@ -5,6 +5,7 @@
 #' @param Y a multilevel/longitudinal functional dataset on a regular grid stored in a matrix
 #' @param id a vector containing the id information
 #' @param group a vector containing information used to identify groups/visits
+#' @param twoway logical, indicating whether to carry out twoway ANOVA and calculate visit-specific means. Defaults to \code{TRUE}.
 #' @param argvals a vector containing observed locations on the functional domain
 #' @param pve proportion of variance explained: used to choose the number of principal components
 #' @param npc prespecified value for the number of principal components (if given, this overrides \code{pve})
@@ -20,7 +21,7 @@
 #' @import Matrix
 #' @import rARPACK
 
-mfpca.fast3 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = NULL, 
+mfpca.fast3 <- function(Y, id, group = NULL, twoway = TRUE, argvals = NULL, pve = 0.99, npc = NULL, 
                         p = 3, m = 2, knots = 35, silent = TRUE){
   ## required packages
   library(refund)
@@ -79,25 +80,31 @@ mfpca.fast3 <- function(Y, id, group = NULL, argvals = NULL, pve = 0.99, npc = N
   ##################################################################################
   if(silent == FALSE) print("Step 2: Estimate group-specific mean function (eta)")
   
-  mueta = matrix(NA, L, J) 
-  eta = matrix(NA, L, J) ## matrix to store visit-specific means
+  mueta = matrix(0, L, J) 
+  eta = matrix(0, L, J) ## matrix to store visit-specific means
   colnames(mueta) <- colnames(eta) <- levels(df$group)
   Ytilde <- matrix(NA, nrow = nrow(df$Y), ncol = ncol(df$Y))
-  for(j in 1:J){
-    ind_j <- which(df$group == levels(df$group)[j])
-    if(length(ind_j) > 1){
-      meanYj <- colMeans(df$Y[ind_j,], na.rm=TRUE)
-    }else{
-      meanYj <- df$Y[ind_j,]
+  if(twoway==TRUE) {
+    for(j in 1:J) {
+      ind_j <- which(df$group == levels(df$group)[j])
+      if(length(ind_j) > 1){
+        meanYj <- colMeans(df$Y[ind_j,], na.rm=TRUE)
+      }else{
+        meanYj <- df$Y[ind_j,]
+      }
+      fit_mueta <- gam(meanYj ~ s(argvals))
+      mueta[,j] <- predict(fit_mueta, newdata = data.frame(argvals = argvals))
+      # mueta[,j] <- smooth.spline(argvals, meanYj, all.knots = FALSE)$y
+      eta[,j] <- mueta[,j] - mu
+      Ytilde[ind_j,] <- df$Y[ind_j,] - matrix(mueta[,j], nrow = length(ind_j), ncol = L, byrow = TRUE)
     }
-    fit_mueta <- gam(meanYj ~ s(argvals))
-    mueta[,j] <- predict(fit_mueta, newdata = data.frame(argvals = argvals))
-    # mueta[,j] <- smooth.spline(argvals, meanYj, all.knots = FALSE)$y
-    eta[,j] <- mueta[,j] - mu
-    Ytilde[ind_j,] <- df$Y[ind_j,] - matrix(mueta[,j], nrow = length(ind_j), ncol = L, byrow = TRUE)
+    rm(meanYj, ind_j, j)
+  } else{
+    Ytilde <- df$Y - matrix(mu, nrow = nrow(df$Y), ncol = L, byrow = TRUE)
   }
+
   df$Ytilde <- I(Ytilde) ## Ytilde is the centered multilevel functional data
-  rm(Ytilde, meanYj, ind_j, j)
+  rm(Ytilde)
   
   ##################################################################################
   ## specify the B-spline basis: knots
