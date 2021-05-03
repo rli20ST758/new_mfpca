@@ -278,13 +278,13 @@ mfpca.fast3 <- function(Y, id, group = NULL, twoway = TRUE, weight = "obs", smoo
         B <- matrix(rep(t(phi1) %*% phi2, Jm), nrow = npc[[1]])
         temp <- ginv(t(phi2) %*% phi2)
       }else{
-        if(length(evalues[[1]]==1)){
+        if(length(evalues[[1]])==1){
           A <- Jm * (t(phi1) %*% phi1) / sigma2 + 1 / evalues[[1]]
         }else{
           A <- Jm * (t(phi1) %*% phi1) / sigma2 + diag(1 / evalues[[1]])
         }
         B = matrix(rep(t(phi1) %*% phi2 / sigma2, Jm), nrow = npc[[1]])
-        if(length(evalues[[2]]==1)){
+        if(length(evalues[[2]])==1){
           temp = ginv(t(phi2) %*% phi2 / sigma2 + 1 / evalues[[2]])
         }else{
           temp = ginv(t(phi2) %*% phi2 / sigma2 + diag(1 / evalues[[2]]))
