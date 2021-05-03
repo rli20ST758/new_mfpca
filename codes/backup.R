@@ -174,7 +174,7 @@ pspline.setting <- function(x,knots=select.knots(x,35), p=3,m=2,weight=NULL,type
     bs = "bs"
   }
   
-  s.object = s(x=x, bs=bs, k=K+p,m=c(p-1,2), sp=NULL)
+  s.object = s(x=x, bs=bs, k=K+p, m=c(p-1,2), sp=NULL)
   object  = smooth.construct(s.object,data = data.frame(x=x),knots=list(x=knots))
   P =  object$S[[1]]
   if(knots.option == "quantile") P = P / max(abs(P))*10 # rescaling
