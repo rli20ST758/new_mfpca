@@ -6,6 +6,8 @@
 #' @param id a vector containing the id information
 #' @param group a vector containing information used to identify groups/visits
 #' @param twoway logical, indicating whether to carry out twoway ANOVA and calculate visit-specific means. Defaults to \code{TRUE}.
+#' @param weight: the way of calculating total covariance, "obs" indicating that the sample covariance is weighted by observations and "subj" indicating that the sample covariance is weighted equally by subjects. Defaults to \code{"obs"}.
+#' @param smooth: the way of calculating within covariance, "separate" indicating that smooth two parts of within covariance separately and "joint" indicating that smooth within covariance jointly. Defaults to \code{"separate"}.
 #' @param argvals a vector containing observed locations on the functional domain
 #' @param pve proportion of variance explained: used to choose the number of principal components
 #' @param npc prespecified value for the number of principal components (if given, this overrides \code{pve})
@@ -16,20 +18,20 @@
 #' @export
 #' @import refund
 #' @import splines
+#' @import mgcv
 #' @import MASS
 #' @import simex
 #' @import Matrix
-#' @import rARPACK
 
-mfpca.fast3 <- function(Y, id, group = NULL, twoway = TRUE, argvals = NULL, pve = 0.99, npc = NULL, 
-                        p = 3, m = 2, knots = 35, silent = TRUE){
+mfpca.fast3 <- function(Y, id, group = NULL, twoway = TRUE, weight = "obs", smooth = "separate",
+                        argvals = NULL, pve = 0.99, npc = NULL, p = 3, m = 2, knots = 35, silent = TRUE){
   ## required packages
   library(refund)
   library(splines)
+  library(mgcv)
   library(MASS)
   library(simex)
   library(Matrix)
-  library(rARPACK)
   #source("./code/backup.R")
   
   ##################################################################################
@@ -135,12 +137,19 @@ mfpca.fast3 <- function(Y, id, group = NULL, twoway = TRUE, argvals = NULL, pve 
   ##################################################################################
   ## impute missing data of Y using FACE approach
   ##################################################################################
+  Ji <- as.numeric(table(df$id))
+  diagD <- rep(Ji, Ji)
   smooth.Gt = face.Cov(Y=unclass(df$Ytilde), argvals, A0, Bt, s, c.p)
+  ## impute missing data of Y using FACE approach
   if(sum(is.na(df$Ytilde))>0){
     df$Ytilde[which(is.na(df$Ytilde))] <- smooth.Gt$Yhat[which(is.na(df$Ytilde))]
   }
+  if(weight=="subj"){
+    YH <- unclass(df$Ytilde)*sqrt(nrow(df$Ytilde)/(I*diagD))
+    smooth.Gt <- face.Cov(Y=YH, argvals, A0, Bt, s, c.p)
+    rm(YH)
+  }
   diag_Gt <- colMeans(df$Ytilde^2)
-  
   
   
   ##################################################################################
@@ -149,43 +158,41 @@ mfpca.fast3 <- function(Y, id, group = NULL, twoway = TRUE, argvals = NULL, pve 
   if(silent == FALSE) print("Step 3: Estimate the within (Kw) subject covariance matrix")
   
   
-  ## method 1: smooth Gw jointly
-  # Ji <- as.numeric(table(df$id))
-  # diagD <- rep(Ji, Ji)
-  # inx_row_ls <- split(1:nrow(df$Ytilde), f=factor(df$id, levels=unique(df$id)))
-  # weight <- sqrt(nrow(df$Ytilde)/(sum(diagD) - nrow(df$Ytilde)))
-  # Ysubm <- t(vapply(inx_row_ls, function(x) colSums(df$Ytilde[x,,drop=FALSE],na.rm=TRUE), numeric(L))) 
-  # YR <-  do.call("rbind",lapply(1:I, function(x) {
-  #   weight * t(t(sqrt(Ji[x])*df$Ytilde[inx_row_ls[[x]],,drop=FALSE]) - Ysubm[x,]/sqrt(Ji[x]))
-  # }))
-  # smooth.Gw <- face.Cov(Y=YR, argvals, A0, Bt, s, c.p)
-  # rm(Ji, diagD, inx_row_ls, weight, Ysubm, YR, Bt, s, Sigi.sqrt, U)
+  if(smooth=="joint"){
+    ## method 1: smooth Gw jointly
+    inx_row_ls <- split(1:nrow(df$Ytilde), f=factor(df$id, levels=unique(df$id)))
+    weight <- sqrt(nrow(df$Ytilde)/(sum(diagD) - nrow(df$Ytilde)))
+    Ysubm <- t(vapply(inx_row_ls, function(x) colSums(df$Ytilde[x,,drop=FALSE],na.rm=TRUE), numeric(L)))
+    YR <-  do.call("rbind",lapply(1:I, function(x) {
+      weight * t(t(sqrt(Ji[x])*df$Ytilde[inx_row_ls[[x]],,drop=FALSE]) - Ysubm[x,]/sqrt(Ji[x]))
+    }))
+    smooth.Gw <- face.Cov(Y=YR, argvals, A0, Bt, s, c.p)
+    rm(Ji, diagD, inx_row_ls, weight, Ysubm, YR, Bt, s, Sigi.sqrt, U)
+  } else{
+    ## method 2: smooth two parts of Gw separately
+    ### first part of formula (Shou et al.2015): t(Y) %*% D %*% Y
+    #weight1 <- sqrt(nrow(df$Ytilde)/(sum(diagD) - nrow(df$Ytilde)))
+    YD <- unclass(df$Ytilde)*sqrt(diagD)
+    smooth.Gw1 <- face.Cov(Y = YD, argvals, A0, Bt, s, c.p)
+    ### second part of formula: t(E %*% Y) %*% E %*% Y
+    inx_row_ls <- split(1:nrow(df$Ytilde), f=factor(df$id, levels=unique(df$id)))
+    #weight2 <- sqrt(I/(sum(diagD) - nrow(df$Ytilde)))
+    YE <- t(vapply(inx_row_ls, function(x) colSums(df$Ytilde[x,,drop=FALSE],na.rm=TRUE), numeric(L)))
+    smooth.Gw2 <- face.Cov(Y = YE, argvals, A0, Bt, s, c.p)
+    # Obtain Kw
+    temp = (nrow(YD)*smooth.Gw1$decom - nrow(YE)*smooth.Gw2$decom)/(sum(diagD) - nrow(df$Ytilde))
+    Eigen <- eigen(temp,symmetric=TRUE)
+    A <- Eigen$vectors
+    Sigma <- Eigen$values
+    d <- Sigma[1:c.p]
+    d <- d[d>0]
+    per <- cumsum(d)/sum(d)
+    N <- ifelse (is.null(npc), min(which(per>pve)), min(npc, length(d)))
+    A.N <- A[,1:N]
+    smooth.Gw <- list(decom=temp, evalues=Sigma[1:N], evectors=as.matrix(B%*%A0%*%A.N))
+    rm(Ji, diagD, inx_row_ls, YD, YE, smooth.Gw1, smooth.Gw2, Bt, s, temp, Eigen, A, Sigma, d, per, N, A.N)
+  }
 
-  
-  # ## method 2: smooth two parts of Gw separately
-  # ### first part of formula (Shou et al.2015): t(Y) %*% D %*% Y
-  Ji <- as.numeric(table(df$id))
-  diagD <- rep(Ji, Ji)
-  #weight1 <- sqrt(nrow(df$Ytilde)/(sum(diagD) - nrow(df$Ytilde)))
-  YD <- unclass(df$Ytilde)*sqrt(diagD)
-  smooth.Gw1 <- face.Cov(Y = YD, argvals, A0, Bt, s, c.p)
-  # ### second part of formula: t(E %*% Y) %*% E %*% Y
-  inx_row_ls <- split(1:nrow(df$Ytilde), f=factor(df$id, levels=unique(df$id)))
-  #weight2 <- sqrt(I/(sum(diagD) - nrow(df$Ytilde)))
-  YE <- t(vapply(inx_row_ls, function(x) colSums(df$Ytilde[x,,drop=FALSE],na.rm=TRUE), numeric(L)))
-  smooth.Gw2 <- face.Cov(Y = YE, argvals, A0, Bt, s, c.p)
-  # Obtain Kw
-  temp = (nrow(YD)*smooth.Gw1$decom - nrow(YE)*smooth.Gw2$decom)/(sum(diagD) - nrow(df$Ytilde))
-  Eigen <- eigen(temp,symmetric=TRUE)
-  A <- Eigen$vectors
-  Sigma <- Eigen$values
-  d <- Sigma[1:c.p]
-  d <- d[d>0]
-  per <- cumsum(d)/sum(d)
-  N <- ifelse (is.null(npc), min(which(per>pve)), min(npc, length(d)))
-  A.N <- A[,1:N]
-  smooth.Gw <- list(decom=temp, evalues=Sigma[1:N], evectors=as.matrix(B%*%A0%*%A.N))
-  rm(Ji, diagD, inx_row_ls, YD, YE, smooth.Gw1, smooth.Gw2, Bt, s, temp, Eigen, A, Sigma, d, per, N, A.N)
   
   
   ##################################################################################
@@ -271,9 +278,17 @@ mfpca.fast3 <- function(Y, id, group = NULL, twoway = TRUE, argvals = NULL, pve 
         B <- matrix(rep(t(phi1) %*% phi2, Jm), nrow = npc[[1]])
         temp <- ginv(t(phi2) %*% phi2)
       }else{
-        A <- Jm * (t(phi1) %*% phi1) / sigma2 + diag(1 / evalues[[1]])
+        if(length(evalues[[1]]==1)){
+          A <- Jm * (t(phi1) %*% phi1) / sigma2 + 1 / evalues[[1]]
+        }else{
+          A <- Jm * (t(phi1) %*% phi1) / sigma2 + diag(1 / evalues[[1]])
+        }
         B = matrix(rep(t(phi1) %*% phi2 / sigma2, Jm), nrow = npc[[1]])
-        temp = ginv(t(phi2) %*% phi2 / sigma2 + diag(1 / evalues[[2]]))
+        if(length(evalues[[2]]==1)){
+          temp = ginv(t(phi2) %*% phi2 / sigma2 + 1 / evalues[[2]])
+        }else{
+          temp = ginv(t(phi2) %*% phi2 / sigma2 + diag(1 / evalues[[2]]))
+        }
       }
       C <- t(B)
       invD = diag.block(temp, Jm)
@@ -319,9 +334,17 @@ mfpca.fast3 <- function(Y, id, group = NULL, twoway = TRUE, argvals = NULL, pve 
         B <- matrix(rep(t(phi1) %*% phi2, Jm), nrow = npc[[1]])
         temp <- ginv(t(phi2) %*% phi2)
       }else{
-        A <- Jm * (t(phi1) %*% phi1) / sigma2 + diag(1 / evalues[[1]])
+        if(length(evalues[[1]]==1)){
+          A <- Jm * (t(phi1) %*% phi1) / sigma2 + 1 / evalues[[1]]
+        }else{
+          A <- Jm * (t(phi1) %*% phi1) / sigma2 + diag(1 / evalues[[1]])
+        }
         B = matrix(rep(t(phi1) %*% phi2 / sigma2, Jm), nrow = npc[[1]])
-        temp = ginv(t(phi2) %*% phi2 / sigma2 + diag(1 / evalues[[2]]))
+        if(length(evalues[[2]]==1)){
+          temp = ginv(t(phi2) %*% phi2 / sigma2 + 1 / evalues[[2]])
+        }else{
+          temp = ginv(t(phi2) %*% phi2 / sigma2 + diag(1 / evalues[[2]]))
+        }
       }
       C <- t(B)
       invD = diag.block(temp, Jm)
