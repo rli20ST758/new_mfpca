@@ -13,19 +13,16 @@ library(dplyr)
 source("GeneData.2.R")
 source("codes/fbps.cov.R")
 source("codes/backup.R")
-#source("mfpca.fast.R")
-source("mfpca.fast2.R")
 source("mfpca.fast3.R")
-source("mfpca.fast4.R")
-
+source("mfpca.fast5.R")
 
 
 ########################################################################
 ## generate multilevel functional data
 ########################################################################
-I <- 100
+I <- 500
 J <- 2
-L <- 200
+L <- 300
 K1 <- 4
 K2 <- 4
 design <- "irregular"
@@ -41,7 +38,7 @@ colnames(sim_res) <- c("I", "J", "L", "iteration",
 ind <- 1
 for(iter in 1:nsim){
   set.seed(iter)
-  data <- GeneData(I = I, J = J, L = L, design = design, sigma = sigma, balanced = T)
+  data <- GeneData(I = I, J = J, L = L, design = design, sigma = sigma, balanced = F, level = 0.4)
   Y <- data$Y
   ## true eigenvalues and eigenfunctions
   evalues_true <- data$evalues 
@@ -51,7 +48,8 @@ for(iter in 1:nsim){
   
   ## fit MFPCA using mfpca.fast()
   ptm <- proc.time()
-  fit_fast <- mfpca.fast2(Y = data$Y, id = id)
+  fit_fast <- mfpca.fast3(Y = data$Y, id = id, weight = "obs", smooth = "separate")
+  #fit_fast <- mfpca.fast2(Y = data$Y, id = id)
   time_fast <- proc.time() - ptm
   # MISE of observations
   diff2 <- 0
@@ -75,7 +73,7 @@ for(iter in 1:nsim){
   
   ## fit MFPCA using mfpca.sc()
   ptm <- proc.time()
-  fit_fast3 <- mfpca.fast3(Y = data$Y, id = id, weight = "obs", smooth = "separate")
+  fit_fast3 <- mfpca.fast3(Y = data$Y, id = id, weight = "subj", smooth = "separate")
   time_sc <- proc.time() - ptm
   # MISE of observations
   diff1 <- 0
@@ -106,7 +104,7 @@ sim_res_lite <- sim_res %>%
   group_by(I, J, L, method) %>% 
   summarise(comptime = median(comptime), `MISE(Y)` = median(`MISE(Y)`),
             `MISE(Phi)` = median(`MISE(Phi)`), `MISE(Psi)` = median(`MISE(Psi)`))
-
+sim_res_lite
 # ## "Smoothing failed! The code is: 52" a lot when I = 100
 # 
 # ## organize the results
