@@ -246,7 +246,8 @@ mfpca.fast5 <- function(Y, id, group = NULL, twoway = TRUE, weight = "obs", smoo
   score2 <- matrix(0, nrow(df$Y), npc[[2]])
   
   unGroups <- unique(nGroups$numGroups) ## unique number of groups
-  if(length(unGroups) < I & length(which(is.na(df$Y))) == 0){
+  # if(length(unGroups) < I & length(which(is.na(df$Y))) == 0){
+  if(length(unGroups) < I){
     for(j in 1:length(unGroups)){
       Jm <- unGroups[j]
       ## calculate block matrices
@@ -303,9 +304,9 @@ mfpca.fast5 <- function(Y, id, group = NULL, twoway = TRUE, weight = "obs", smoo
     rm(YJm, g, ind.group, ind.Jm)
     
   }else{
-    ### we only use non-imputed Ytilde (Ytilde_real) to calculate final score
-    df$Ytilde_real <- df$Ytilde
-    df$Ytilde_real[which(is.na(df$Y))] <- 0
+    # ### we only use non-imputed Ytilde (Ytilde_real) to calculate final score
+    # df$Ytilde_real <- df$Ytilde
+    # df$Ytilde_real[which(is.na(df$Y))] <- 0
     
     for(m in 1:I){
       Jm <- nGroups[m, 2]  ## number of visits for mth subject
@@ -339,8 +340,10 @@ mfpca.fast5 <- function(Y, id, group = NULL, twoway = TRUE, weight = "obs", smoo
       Mat2 <- cbind(MatF,MatH)
       
       ## estimate the principal component scores
-      int1 <- colSums(matrix(df$Ytilde_real[df$id==ID[m],], ncol = L) %*% phi1)
-      int2 <- matrix(df$Ytilde_real[df$id==ID[m],], ncol = L) %*% phi2
+      # int1 <- colSums(matrix(df$Ytilde_real[df$id==ID[m],], ncol = L) %*% phi1)
+      # int2 <- matrix(df$Ytilde_real[df$id==ID[m],], ncol = L) %*% phi2
+      int1 <- colSums(matrix(df$Ytilde[df$id==ID[m],], ncol = L) %*% phi1)
+      int2 <- matrix(df$Ytilde[df$id==ID[m],], ncol = L) %*% phi2
       if(sigma2 < 1e-4){
         int <- c(int1, as.vector(t(int2)))
       }else{
