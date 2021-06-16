@@ -246,7 +246,7 @@ mfpca.fast5 <- function(Y, id, group = NULL, twoway = TRUE, weight = "obs", smoo
   score2 <- matrix(0, nrow(df$Y), npc[[2]])
   
   unGroups <- unique(nGroups$numGroups) ## unique number of groups
-  if(length(unGroups) < I){
+  if(length(unGroups) < I & length(which(is.na(df$Y))) == 0){
     for(j in 1:length(unGroups)){
       Jm <- unGroups[j]
       ## calculate block matrices
@@ -300,7 +300,13 @@ mfpca.fast5 <- function(Y, id, group = NULL, twoway = TRUE, weight = "obs", smoo
       Xhat.subject[ind.group,] <- t(t(Xhat.subject[ind.group,]) + mu + eta[,levels(df$group)[g]])
       Xhat[ind.group,] <- t(t(Xhat[ind.group,]) + mu + eta[,levels(df$group)[g]])
     }
+    rm(YJm, g, ind.group, ind.Jm)
+    
   }else{
+    ### we only use non-imputed Ytilde (Ytilde_real) to calculate final score
+    df$Ytilde_real <- df$Ytilde
+    df$Ytilde_real[which(is.na(df$Y))] <- 0
+    
     for(m in 1:I){
       Jm <- nGroups[m, 2]  ## number of visits for mth subject
       ## calculate block matrices
@@ -333,8 +339,8 @@ mfpca.fast5 <- function(Y, id, group = NULL, twoway = TRUE, weight = "obs", smoo
       Mat2 <- cbind(MatF,MatH)
       
       ## estimate the principal component scores
-      int1 <- colSums(matrix(df$Ytilde[df$id==ID[m],], ncol = L) %*% phi1)
-      int2 <- matrix(df$Ytilde[df$id==ID[m],], ncol = L) %*% phi2
+      int1 <- colSums(matrix(df$Ytilde_real[df$id==ID[m],], ncol = L) %*% phi1)
+      int2 <- matrix(df$Ytilde_real[df$id==ID[m],], ncol = L) %*% phi2
       if(sigma2 < 1e-4){
         int <- c(int1, as.vector(t(int2)))
       }else{
@@ -350,8 +356,7 @@ mfpca.fast5 <- function(Y, id, group = NULL, twoway = TRUE, weight = "obs", smoo
   }
   scores <- list(level1 = score1, level2 = score2)
   
-  rm(A, B, C, int, int1, int2, invD, Mat1, Mat2, MatE, MatF, MatG, MatH, temp, YJm,
-     g, ind.group, ind.Jm, j, Jm, unGroups, phi1, phi2, score1, score2)
+  rm(A, B, C, int, int1, int2, invD, Mat1, Mat2, MatE, MatF, MatG, MatH, temp, j, Jm, unGroups, phi1, phi2, score1, score2)
   
   
   ###################################################################
