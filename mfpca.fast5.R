@@ -161,11 +161,21 @@ mfpca.fast5 <- function(Y, id, group = NULL, twoway = TRUE, weight = "obs", smoo
   if(smooth=="joint"){
     ## method 1: smooth Gw jointly
     inx_row_ls <- split(1:nrow(df$Ytilde), f=factor(df$id, levels=unique(df$id)))
-    weight <- sqrt(nrow(df$Ytilde)/(sum(diagD) - nrow(df$Ytilde)))
     Ysubm <- t(vapply(inx_row_ls, function(x) colSums(df$Ytilde[x,,drop=FALSE],na.rm=TRUE), numeric(L)))
-    YR <-  do.call("rbind",lapply(1:I, function(x) {
-      weight * t(t(sqrt(Ji[x])*df$Ytilde[inx_row_ls[[x]],,drop=FALSE]) - Ysubm[x,]/sqrt(Ji[x]))
-    }))
+    if(weight=="obs"){
+      weights <- sqrt(nrow(df$Ytilde)/(sum(diagD) - nrow(df$Ytilde)))
+      YR <-  do.call("rbind",lapply(1:I, function(x) {
+        weights*sqrt(Ji[x]) * t(t(df$Ytilde[inx_row_ls[[x]],,drop=FALSE]) - Ysubm[x,]/Ji[x])
+      }))
+    }
+    if(weight=="subj"){
+      weights <- sqrt(nrow(df$Ytilde)/I)
+      YR <-  do.call("rbind",lapply(1:I, function(x) {
+        YRi <- (weights/sqrt(Ji[x]-1)) * t(t(df$Ytilde[inx_row_ls[[x]],,drop=FALSE]) - Ysubm[x,]/Ji[x])
+        if(Ji[x]==1) YRi <- t(t(df$Ytilde[inx_row_ls[[x]],,drop=FALSE]) - Ysubm[x,]/Ji[x])
+        return(YRi)
+      }))
+    }
     smooth.Gw <- face.Cov2(Y=YR, argvals, A0, B, Anew, Bnew, G_invhalf, s)
     rm(Ji, diagD, inx_row_ls, weight, Ysubm, YR, B, Anew, G_invhalf, s)
   } else{
