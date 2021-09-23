@@ -169,7 +169,7 @@ mfpca.fast5 <- function(Y, id, group = NULL, twoway = TRUE, weight = "obs", smoo
       }))
     }
     if(weight=="subj"){
-      weights <- sqrt(nrow(df$Ytilde)/I)
+      weights <- sqrt(nrow(df$Ytilde)/sum(Ji>1))
       YR <-  do.call("rbind",lapply(1:I, function(x) {
         if(Ji[x]>1) return((weights/sqrt(Ji[x]-1)) * t(t(df$Ytilde[inx_row_ls[[x]],,drop=FALSE]) - Ysubm[x,]/Ji[x]))
         #if(Ji[x]==1) return(t(t(df$Ytilde[inx_row_ls[[x]],,drop=FALSE]) - Ysubm[x,]/Ji[x]))
