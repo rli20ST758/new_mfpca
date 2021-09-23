@@ -171,9 +171,8 @@ mfpca.fast5 <- function(Y, id, group = NULL, twoway = TRUE, weight = "obs", smoo
     if(weight=="subj"){
       weights <- sqrt(nrow(df$Ytilde)/I)
       YR <-  do.call("rbind",lapply(1:I, function(x) {
-        YRi <- (weights/sqrt(Ji[x]-1)) * t(t(df$Ytilde[inx_row_ls[[x]],,drop=FALSE]) - Ysubm[x,]/Ji[x])
-        if(Ji[x]==1) YRi <- t(t(df$Ytilde[inx_row_ls[[x]],,drop=FALSE]) - Ysubm[x,]/Ji[x])
-        return(YRi)
+        if(Ji[x]>1) return((weights/sqrt(Ji[x]-1)) * t(t(df$Ytilde[inx_row_ls[[x]],,drop=FALSE]) - Ysubm[x,]/Ji[x]))
+        #if(Ji[x]==1) return(t(t(df$Ytilde[inx_row_ls[[x]],,drop=FALSE]) - Ysubm[x,]/Ji[x]))
       }))
     }
     smooth.Gw <- face.Cov2(Y=YR, argvals, A0, B, Anew, Bnew, G_invhalf, s)
